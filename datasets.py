@@ -8,6 +8,7 @@ def load_mnist(batch_size):
 
 def load_celeba():
     # tfds.load('celeb_a')
+    pass
 
 if __name__ == "__main__":
     load_celeba()
