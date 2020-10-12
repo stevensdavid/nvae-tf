@@ -58,7 +58,7 @@ class GenerativeResidualCell(layers.Layer):
         x = self.conv2(x)
         x = self.batch_norm4(x)
         x = self.se(x)
-        return input + x
+        return tf.concat((input, x))
 
 
 class EncodingResidualCell(layers.Layer):
@@ -78,4 +78,4 @@ class EncodingResidualCell(layers.Layer):
         x = activations.swish(self.batch_norm2(x))
         x = self.conv2(x)
         x = self.se(x)
-        return input + x
+        return tf.concat((input, x))
