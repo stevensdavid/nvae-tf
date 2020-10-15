@@ -6,31 +6,66 @@ from tensorflow.python.keras.layers.convolutional import Conv2D
 
 from tensorflow.python.keras.layers.normalization import BatchNormalization
 
+SCALE_FACTOR = 2
+
 
 class RescaleType(Enum):
     UP = auto()
     DOWN = auto()
 
 
-class NVAE(tf.keras.Model):
-    def __init__(self, n_encoder_channels, res_cells_per_group, n_groups, **kwargs):
+class BNSwishConv(layers.Layer):
+    def __init__(self, n_nodes, n_channels, stride, **kwargs) -> None:
         super().__init__(**kwargs)
+        self.nodes = Sequential()
+        for _ in range(n_nodes):
+            self.nodes.add(BatchNormalization())
+            self.nodes.add(layers.Activation(activations.swish))
+            self.nodes.add(layers.Conv2D(n_channels, (3, 3), stride, padding="same"))
+        self.se = SqueezeExcitation()
+
+    def call(self, input):
+        x = self.nodes(input)
+        x = self.se(x)
+        return input + x
+
+
+class NVAE(tf.keras.Model):
+    def __init__(
+        self,
+        n_encoder_channels,
+        res_cells_per_group,
+        n_groups,
+        n_preprocess_blocks,
+        n_preprocess_cells,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.preprocess = Preprocess(
+            n_encoder_channels, n_preprocess_blocks, n_preprocess_cells
+        )
+        mult = self.preprocess.mult
         self.encoder = Encoder(
             n_encoder_channels=3,
             n_latent_per_group=1,
             res_cells_per_group=2,
             n_latent_scales=2,
             n_groups_per_scale=[3, 1],
+            mult=mult,
         )
+        mult = self.encoder.mult
         self.decoder = Decoder()
 
     def call(self, x):
+        x = self.preprocess(x)
         group_outputs, combiners, final_x = self.encoder(x)
         dist_params = self.encoder.sampler[0](final_x)
         mu, log_sigma = tf.split(dist_params, 2, axis=-1)
         mu = tf.squeeze(mu)
         log_sigma = tf.squeeze(log_sigma)
-        z = tf.random.normal(shape=mu.shape, mean=mu, stddev=tf.math.exp(log_sigma))
+        # z = tf.random.normal(shape=mu.shape, mean=mu, stddev=tf.math.exp(log_sigma))
+        # reparametrization trick
+        z = mu + tf.random.normal(shape=mu.shape) * tf.math.exp(log_sigma)
         return x
 
     def sample(self):
@@ -45,6 +80,36 @@ class EncoderCombiner(layers.Layer):
     def call(self, input):
         x = self.conv(input)
         return input + x
+
+
+class Preprocess(layers.Layer):
+    def __init__(self, n_encoder_channels, n_blocks, n_cells, mult=1, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.pre_process = Sequential(
+            layers.Conv2D(n_encoder_channels, (3, 3), padding="same")
+        )
+        for block in range(n_blocks):
+            for cell in range(n_cells - 1):
+                n_channels = mult * n_encoder_channels
+                cell = BNSwishConv(2, n_channels, stride=(1, 1))
+                self.pre_process.add(cell)
+            # Rescale channels on final cell
+            n_channels = mult * n_encoder_channels * SCALE_FACTOR
+            # TODO: NVLabs uses FactorizedReduce here as skip connection...
+            self.pre_process.add(BNSwishConv(2, n_channels, stride=(1, 1)))
+            mult *= SCALE_FACTOR
+        self.mult = mult
+
+    def call(self, input):
+        return self.pre_process(input)
+
+
+class Postprocess(layers.Layer):
+    def __init__(self, n_blocks, n_cells, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+    def call(self, input):
+        pass
 
 
 class Rescaler(layers.Layer):
@@ -80,17 +145,16 @@ class Encoder(layers.Layer):
         res_cells_per_group,
         n_latent_scales: int,
         n_groups_per_scale: List[int],
+        mult: int,
         **kwargs
     ):
         super().__init__(**kwargs)
-        self.pre_process = layers.Conv2D(n_encoder_channels, (3, 3), padding="same")
-
         # Initialize encoder tower
         self.groups = []
         for scale in range(n_latent_scales):
             n_groups = n_groups_per_scale[scale]
             for group in range(n_groups):
-                output_channels = n_encoder_channels * (2 ** scale)
+                output_channels = n_encoder_channels * mult
                 group = Sequential()
                 for _ in range(res_cells_per_group):
                     group.add(EncodingResidualCell(output_channels))
@@ -100,16 +164,17 @@ class Encoder(layers.Layer):
                     self.groups.append(EncoderCombiner(output_channels))
             # We downsample in the end of each scale except last
             if scale < n_latent_scales - 1:
-                output_channels = 2 * n_encoder_channels
+                output_channels = n_encoder_channels * mult
                 self.groups.append(
                     Rescaler(
                         output_channels, scale_factor=2, rescale_type=RescaleType.DOWN
                     )
                 )
+                mult *= SCALE_FACTOR
         self.final_enc = Sequential(
             [
                 layers.ELU(),
-                layers.Conv2D(n_encoder_channels, (1, 1), padding="same"),
+                layers.Conv2D(n_encoder_channels * mult, (1, 1), padding="same"),
                 layers.ELU(),
             ]
         )
@@ -119,8 +184,11 @@ class Encoder(layers.Layer):
             n_groups = n_groups_per_scale[scale]
             for group in range(n_groups):
                 self.sampler.append(
-                    layers.Conv2D(2 * n_latent_per_group, (3, 3), padding="same")
+                    layers.Conv2D(
+                        SCALE_FACTOR * n_latent_per_group, (3, 3), padding="same"
+                    )
                 )
+        self.mult = mult
 
     def call(self, x):
         x = self.pre_process(x)
