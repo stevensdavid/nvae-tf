@@ -1,6 +1,6 @@
-from models import SCALE_FACTOR
 from typing import List
-from common import RescaleType, SqueezeExcitation, Rescaler
+from common import RescaleType, SqueezeExcitation, Rescaler, Sampler
+from config import SCALE_FACTOR
 import tensorflow as tf
 from tensorflow.keras import layers, activations, Sequential
 
@@ -8,83 +8,68 @@ from tensorflow.keras import layers, activations, Sequential
 class Decoder(layers.Layer):
     def __init__(
         self,
-        n_encoder_channels,
+        n_decoder_channels,
         n_latent_per_group: int,
         res_cells_per_group,
         n_latent_scales: int,
         n_groups_per_scale: List[int],
         mult: int,
+        # sampler: Sampler,
         **kwargs
     ):
         super().__init__(**kwargs)
+        # these 4s should be changed
+        self.h = tf.Variable(tf.zeros((4, 4, n_decoder_channels)), trainable=True)
         # Initialize encoder tower
         self.groups = []
+        # self.sampler = sampler
+        self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         for scale in range(n_latent_scales):
             n_groups = n_groups_per_scale[scale]
             for group in range(n_groups):
-                output_channels = n_encoder_channels * mult
-                group = Sequential()
-                for _ in range(res_cells_per_group):
-                    group.add(GenerativeResidualCell(output_channels))
-                self.groups.append(group)
-                if not (scale == n_latent_scales - 1 and group == n_groups - 1):
-                    # We apply a convolutional between each group except the final output
-                    self.groups.append(DecoderGroupActivation(output_channels))
-            # We downsample in the end of each scale except last
+                output_channels = n_decoder_channels * mult
+                if not(scale == 0 and group == 0):
+                    group = Sequential()
+                    for _ in range(res_cells_per_group):
+                        group.add(GenerativeResidualCell(output_channels))
+                    self.groups.append(group)
+                self.groups.append(DecoderSampleCombiner(output_channels))
+            
             if scale < n_latent_scales - 1:
-                output_channels = n_encoder_channels * mult
+                output_channels = n_decoder_channels * mult
                 self.groups.append(
                     Rescaler(
-                        output_channels, scale_factor=2, rescale_type=RescaleType.DOWN
+                        output_channels, scale_factor=2, rescale_type=RescaleType.UP
                     )
                 )
-                mult *= SCALE_FACTOR
-        self.final_enc = Sequential(
-            [
-                layers.ELU(),
-                layers.Conv2D(n_encoder_channels * mult, (1, 1), padding="same"),
-                layers.ELU(),
-            ]
-        )
-        # Initialize sampler
-        self.sampler = []
-        for scale in range(n_latent_scales):
-            n_groups = n_groups_per_scale[scale]
-            for group in range(n_groups):
-                self.sampler.append(
-                    layers.Conv2D(
-                        SCALE_FACTOR * n_latent_per_group, (3, 3), padding="same"
-                    )
-                )
-        self.mult = mult
+                mult /= SCALE_FACTOR
+        self.final_dec = GenerativeResidualCell(mult*n_decoder_channels)
 
-    def call(self, x):
-        x = self.pre_process(x)
-        # 8x26x26x32
-        group_outputs = []
-        combiners = []
-        for group in self.groups:
-            x = group(x)
-            if isinstance(group, EncoderCombiner):
-                # We are stepping between groups, need to save results
-                group_outputs.append(x)
-                combiners.append(group)
-        final = self.final_enc(x)
-        return group_outputs, combiners, final
+    def call(self, prior, enc_dec_combiners: List):
+        z0 = self.sampler(prior, z_idx=0)
+        x = self.groups[0](self.h, z0)
+        
+        combine_idx = 0
+        for group in self.groups[1:]:
+            if isinstance(group, DecoderSampleCombiner):
+                prior = enc_dec_combiners[combine_idx](x)
+                z_sample = self.sampler(prior, combine_idx+1)
+                x = group(x, z_sample)
+                combine_idx += 1
+            x = group(x)   
+        return self.final_dec(x)
 
 
-class Decoder(layers.Layer):
-    def __init__(self, **kwargs):
+class DecoderSampleCombiner(layers.Layer):
+    def __init__(self, output_channels, **kwargs):
         super().__init__(**kwargs)
-
-    def call(self, x):
-        return x
-
-class DecoderGroupActivation(layers.Layer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
+        self.conv = layers.Conv2D(output_channels, (1,1), strides=(1,1), padding="same")
     
+    def call(self, x, z):
+        output = tf.concat((x, z), axis=3)
+        output = self.conv(output)
+        return output
+
 
 class GenerativeResidualCell(layers.Layer):
     """Generative network residual cell in NVAE architecture"""

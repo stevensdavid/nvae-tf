@@ -1,18 +1,19 @@
 
 from common import RescaleType, Rescaler, SqueezeExcitation
+from config import SCALE_FACTOR
 from typing import List
 from tensorflow.keras import layers, Sequential, activations
-from models import SCALE_FACTOR
+from functools import partial
 
 
-class EncoderGroupActivation(layers.Layer):
+class EncoderDecoderCombiner(layers.Layer):
     def __init__(self, n_channels, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.conv = layers.Conv2D(n_channels, (1, 1))
+        self.decoder_conv = layers.Conv2D(n_channels, (1, 1))
 
-    def call(self, input):
-        x = self.conv(input)
-        return input + x
+    def call(self, encoder_x, decoder_x):
+        x = self.decoder_conv(decoder_x)
+        return encoder_x + x
 
 
 class Encoder(layers.Layer):
@@ -39,7 +40,7 @@ class Encoder(layers.Layer):
                 self.groups.append(group)
                 if not (scale == n_latent_scales - 1 and group == n_groups - 1):
                     # We apply a convolutional between each group except the final output
-                    self.groups.append(EncoderGroupActivation(output_channels))
+                    self.groups.append(EncoderDecoderCombiner(output_channels))
             # We downsample in the end of each scale except last
             if scale < n_latent_scales - 1:
                 output_channels = n_encoder_channels * mult
@@ -56,31 +57,23 @@ class Encoder(layers.Layer):
                 layers.ELU(),
             ]
         )
-        # Initialize sampler
-        self.sampler = []
-        for scale in range(n_latent_scales):
-            n_groups = n_groups_per_scale[scale]
-            for group in range(n_groups):
-                self.sampler.append(
-                    layers.Conv2D(
-                        SCALE_FACTOR * n_latent_per_group, (3, 3), padding="same"
-                    )
-                )
         self.mult = mult
 
     def call(self, x):
         x = self.pre_process(x)
         # 8x26x26x32
-        group_outputs = []
-        combiners = []
+        enc_dec_combiners = []
         for group in self.groups:
-            x = group(x)
-            if isinstance(group, EncoderGroupActivation):
+            if isinstance(group, EncoderDecoderCombiner):
                 # We are stepping between groups, need to save results
-                group_outputs.append(x)
-                combiners.append(group)
+                enc_dec_combiners.append(
+                    partial(group, x)
+                    # lambda dec_x, enc_x=x, combiner=group: combiner(enc_x, dec_x)
+                )
+            else:
+                x = group(x)
         final = self.final_enc(x)
-        return group_outputs, combiners, final
+        return enc_dec_combiners, final
 
 
 class EncodingResidualCell(layers.Layer):

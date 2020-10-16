@@ -1,8 +1,60 @@
+from typing import Sequence
+from config import SCALE_FACTOR
 from enum import Enum, auto
 import tensorflow as tf
 
-from tensorflow.keras import layers
-from tensorflow.keras import activations
+from tensorflow.keras import layers, activations, Sequential
+
+
+class Sampler(layers.Layer):
+    def __init__(self, n_latent_scales, n_groups_per_scale, n_latent_per_group, **kwargs) -> None:
+        super().__init__(**kwargs)
+        # Initialize sampler
+        self.enc_sampler = []
+        self.dec_sampler = []
+        self.n_latent_scales = n_latent_scales
+        self.n_groups_per_scale = n_groups_per_scale
+        self.n_latent_per_group = n_latent_per_group
+        for scale in range(self.n_latent_scales):
+            n_groups = self.n_groups_per_scale[scale]
+            for group in range(n_groups):
+                self.enc_sampler.append(
+                    # NVLabs use padding 1 here?
+                    layers.Conv2D(
+                        SCALE_FACTOR * self.n_latent_per_group, kernel_size=(3, 3), padding="same"
+                    )
+                )
+                if scale == 0 and group == 0:
+                    # Dummy value to maintain indexing
+                    pass
+                    # self.dec_sampler.append(None)
+                else:
+                    sampler = Sequential()
+                    sampler.add(layers.ELU())
+                    # NVLabs use padding 0 here?
+                    sampler.add(layers.Conv2D(SCALE_FACTOR * self.n_latent_per_group, kernel_size=(1,1)))
+                    self.dec_sampler.append(sampler)
+
+
+    def sample(self, mu, log_sigma):
+        # reparametrization trick
+        z = mu + tf.random.normal(shape=mu.shape) * tf.math.exp(log_sigma)
+        return z
+
+    def get_params(self, sampler, z_idx, prior):
+        params = sampler[z_idx](prior)
+        mu, log_sigma = tf.split(params, 2, axis=-1)
+        mu, log_sigma = [tf.squeeze(p) for p in (mu, log_sigma)]
+        return mu, log_sigma
+
+    def call(self, prior, z_idx):
+        enc_mu, enc_log_sigma = self.get_params(self.enc_sampler, z_idx, prior)
+        if z_idx == 0:
+            return self.sample(enc_mu, enc_log_sigma)
+        # Get decoder offsets
+        dec_mu, dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
+        return self.sample(enc_mu + dec_mu, enc_log_sigma + dec_log_sigma)
+
 
 class RescaleType(Enum):
     UP = auto()

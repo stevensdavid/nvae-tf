@@ -5,17 +5,18 @@ from tensorflow.keras import layers
 from preprocess import Preprocess
 
 
-SCALE_FACTOR = 2
-
-
 class NVAE(tf.keras.Model):
     def __init__(
         self,
         n_encoder_channels,
+        n_decoder_channels,
         res_cells_per_group,
         n_groups,
         n_preprocess_blocks,
         n_preprocess_cells,
+        n_latent_per_group,
+        n_latent_scales,
+        n_groups_per_scale,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -24,28 +25,35 @@ class NVAE(tf.keras.Model):
         )
         mult = self.preprocess.mult
         self.encoder = Encoder(
-            n_encoder_channels=3,
-            n_latent_per_group=1,
-            res_cells_per_group=2,
-            n_latent_scales=2,
-            n_groups_per_scale=[3, 1],
+            n_encoder_channels=n_encoder_channels,
+            n_latent_per_group=n_latent_per_group,
+            res_cells_per_group=res_cells_per_group,
+            n_latent_scales=n_latent_scales,
+            n_groups_per_scale=n_groups_per_scale,
             mult=mult,
         )
+        # self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         mult = self.encoder.mult
-        self.decoder = Decoder()
+        self.decoder = Decoder(
+            n_decoder_channels=n_decoder_channels,
+            n_latent_per_group=n_latent_per_group,
+            res_cells_per_group=res_cells_per_group,
+            n_latent_scales=n_latent_scales,
+            n_groups_per_scale=list(reversed(n_groups_per_scale)),
+            mult=mult,
+            # sampler=self.sampler
+        )
 
-    def call(self, x):
-        x = self.preprocess(x)
-        group_outputs, combiners, final_x = self.encoder(x)
-        dist_params = self.encoder.sampler[0](final_x)
-        mu, log_sigma = tf.split(dist_params, 2, axis=-1)
-        mu = tf.squeeze(mu)
-        log_sigma = tf.squeeze(log_sigma)
-        # z = tf.random.normal(shape=mu.shape, mean=mu, stddev=tf.math.exp(log_sigma))
-        # reparametrization trick
-        z = mu + tf.random.normal(shape=mu.shape) * tf.math.exp(log_sigma)
+    def call(self, input):
+        x = self.preprocess(input)
+        enc_dec_combiners, final_x = self.encoder(x)
+        # Flip bottom-up to top-down
+        enc_dec_combiners.reverse()
+        # z0 = self.decoder.sampler(prior=final_x, z_idx=0)
+        # reconstruction = self.decoder(z0, enc_dec_combiners)
+        reconstruction = self.decoder(final_x, enc_dec_combiners)
         return x
 
-    def sample(self):
+    def sample(self, n_samples, t):
         pass
 
