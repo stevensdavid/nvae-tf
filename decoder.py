@@ -19,7 +19,7 @@ class Decoder(layers.Layer):
     ):
         super().__init__(**kwargs)
         # these 4s should be changed
-        self.h = tf.Variable(tf.zeros((4, 4, n_decoder_channels)), trainable=True)
+        self.h = tf.Variable(tf.zeros((1, 4, 4, n_decoder_channels)), trainable=True)
         # Initialize encoder tower
         self.groups = []
         # self.sampler = sampler
@@ -46,18 +46,22 @@ class Decoder(layers.Layer):
         self.final_dec = GenerativeResidualCell(mult*n_decoder_channels)
 
     def call(self, prior, enc_dec_combiners: List):
-        z0 = self.sampler(prior, z_idx=0)
+        z_params = []
+        z0, params = self.sampler(prior, z_idx=0)
+        z_params.append(params)
         x = self.groups[0](self.h, z0)
         
         combine_idx = 0
         for group in self.groups[1:]:
             if isinstance(group, DecoderSampleCombiner):
                 prior = enc_dec_combiners[combine_idx](x)
-                z_sample = self.sampler(prior, combine_idx+1)
+                z_sample, params = self.sampler(prior, combine_idx+1)
+                z_params.append(params)
                 x = group(x, z_sample)
                 combine_idx += 1
-            x = group(x)   
-        return self.final_dec(x)
+            x = group(x)
+        
+        return self.final_dec(x), z_params
 
 
 class DecoderSampleCombiner(layers.Layer):

@@ -51,8 +51,8 @@ class NVAE(tf.keras.Model):
         enc_dec_combiners.reverse()
         # z0 = self.decoder.sampler(prior=final_x, z_idx=0)
         # reconstruction = self.decoder(z0, enc_dec_combiners)
-        reconstruction = self.decoder(final_x, enc_dec_combiners)
-        return x
+        reconstruction, z_params = self.decoder(final_x, enc_dec_combiners)
+        return reconstruction, z_params
 
     def sample(self, n_samples, t):
         pass

@@ -43,10 +43,10 @@ class Encoder(layers.Layer):
                     self.groups.append(EncoderDecoderCombiner(output_channels))
             # We downsample in the end of each scale except last
             if scale < n_latent_scales - 1:
-                output_channels = n_encoder_channels * mult
+                output_channels = n_encoder_channels * mult * SCALE_FACTOR
                 self.groups.append(
                     Rescaler(
-                        output_channels, scale_factor=2, rescale_type=RescaleType.DOWN
+                        output_channels, scale_factor=SCALE_FACTOR, rescale_type=RescaleType.DOWN
                     )
                 )
                 mult *= SCALE_FACTOR
@@ -60,7 +60,6 @@ class Encoder(layers.Layer):
         self.mult = mult
 
     def call(self, x):
-        x = self.pre_process(x)
         # 8x26x26x32
         enc_dec_combiners = []
         for group in self.groups:

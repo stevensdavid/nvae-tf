@@ -4,6 +4,12 @@ tf.config.experimental.set_visible_devices([], "GPU")
 from models import NVAE
 from datasets import load_mnist
 
+def kl_loss(params):
+    pass
+
+def recon_loss(input, reconstruction):
+    pass
+
 if __name__ == "__main__":
     train_data, test_data = load_mnist(batch_size=8)
     model = NVAE(
@@ -18,5 +24,6 @@ if __name__ == "__main__":
         n_groups_per_scale=[3,1],
     )
     for batch_x, _ in train_data:
-        res = model(batch_x)
+        reconstruction, z_params = model(batch_x)
+        loss = recon_loss(batch_x,reconstruction) + kl_loss(z_params)
     pass

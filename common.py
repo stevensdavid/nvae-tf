@@ -1,10 +1,68 @@
-from typing import Sequence
+from typing import Tuple
 from config import SCALE_FACTOR
 from enum import Enum, auto
 import tensorflow as tf
 
 from tensorflow.keras import layers, activations, Sequential
+from dataclasses import dataclass
 
+
+@dataclass
+class DistributionParams:
+    enc_mu: float
+    enc_log_sigma: float
+    dec_mu: float
+    dec_log_sigma: float
+
+
+class SkipScaler(layers.Layer):
+    def __init__(self, n_channels, **kwargs):
+        super().__init__(**kwargs)
+        # Each convolution handles a quarter of the channels
+        self.conv1 = layers.Conv2D(n_channels // 4, (1,1), strides=(2,2), padding="same")
+        self.conv2 = layers.Conv2D(n_channels // 4, (1,1), strides=(2,2), padding="same")
+        self.conv3 = layers.Conv2D(n_channels // 4, (1,1), strides=(2,2), padding="same")
+        # This convolotuion handles the remaining channels
+        self.conv4 = layers.Conv2D(n_channels - 3 * (n_channels // 4), (1,1), strides=(2,2), padding="same")
+
+    def call(self, x):
+        out = activations.swish(x)
+        # Indexes are offset as we stride by 2x2, this way we cover all pixels
+        conv1 = self.conv1(out)
+        conv2 = self.conv2(out[:, 1:, 1:, :])
+        conv3 = self.conv3(out[:, :, 1:, :])
+        conv4 = self.conv4(out[:, 1:, :, :])
+        # Combine channels
+        out = tf.concat((conv1, conv2, conv3, conv4), axis=3)
+        return out
+
+class BNSwishConv(layers.Layer):
+    def __init__(self, n_nodes, n_channels, stride, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.nodes = Sequential()
+        if stride == (1,1):
+            self.skip = tf.identity
+        elif stride == (2,2):
+            # We have to rescale the input in order to combine it
+            self.skip = SkipScaler(n_channels)
+        for i in range(n_nodes):
+            self.nodes.add(layers.BatchNormalization())
+            self.nodes.add(layers.Activation(activations.swish))
+            # 
+            self.nodes.add(layers.Conv2D(
+                n_channels, 
+                (3, 3), 
+                # Only apply rescaling on first node
+                stride if i == 0 else (1,1), 
+                padding="same"
+            ))
+        self.se = SqueezeExcitation()
+
+    def call(self, input):
+        skipped = self.skip(input)
+        x = self.nodes(input)
+        x = self.se(x)
+        return skipped + x
 
 class Sampler(layers.Layer):
     def __init__(self, n_latent_scales, n_groups_per_scale, n_latent_per_group, **kwargs) -> None:
@@ -47,13 +105,16 @@ class Sampler(layers.Layer):
         mu, log_sigma = [tf.squeeze(p) for p in (mu, log_sigma)]
         return mu, log_sigma
 
-    def call(self, prior, z_idx):
+    def call(self, prior, z_idx) -> Tuple[tf.Tensor, DistributionParams]:
         enc_mu, enc_log_sigma = self.get_params(self.enc_sampler, z_idx, prior)
         if z_idx == 0:
-            return self.sample(enc_mu, enc_log_sigma)
+            params = DistributionParams(enc_mu, enc_log_sigma, None, None)
+            return self.sample(enc_mu, enc_log_sigma), params
         # Get decoder offsets
         dec_mu, dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
-        return self.sample(enc_mu + dec_mu, enc_log_sigma + dec_log_sigma)
+        params = DistributionParams(enc_mu, enc_log_sigma, dec_mu, dec_log_sigma)
+        z = self.sample(enc_mu + dec_mu, enc_log_sigma + dec_log_sigma)
+        return z, params
 
 
 class RescaleType(Enum):
