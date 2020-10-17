@@ -8,7 +8,7 @@ def load_mnist(batch_size):
         image = tf.image.resize_with_crop_or_pad(image, 32, 32)
         image = tf.cast(image, dtype=tf.float32)
         image = tfp.distributions.Bernoulli(probs=image, dtype=tf.float32).sample()
-        return image, label
+        return image# , label
 
     return train_ds.map(transform), test_ds.map(transform)
 

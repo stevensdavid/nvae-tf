@@ -15,55 +15,6 @@ class DistributionParams:
     dec_log_sigma: float
 
 
-class SkipScaler(layers.Layer):
-    def __init__(self, n_channels, **kwargs):
-        super().__init__(**kwargs)
-        # Each convolution handles a quarter of the channels
-        self.conv1 = layers.Conv2D(n_channels // 4, (1,1), strides=(2,2), padding="same")
-        self.conv2 = layers.Conv2D(n_channels // 4, (1,1), strides=(2,2), padding="same")
-        self.conv3 = layers.Conv2D(n_channels // 4, (1,1), strides=(2,2), padding="same")
-        # This convolotuion handles the remaining channels
-        self.conv4 = layers.Conv2D(n_channels - 3 * (n_channels // 4), (1,1), strides=(2,2), padding="same")
-
-    def call(self, x):
-        out = activations.swish(x)
-        # Indexes are offset as we stride by 2x2, this way we cover all pixels
-        conv1 = self.conv1(out)
-        conv2 = self.conv2(out[:, 1:, 1:, :])
-        conv3 = self.conv3(out[:, :, 1:, :])
-        conv4 = self.conv4(out[:, 1:, :, :])
-        # Combine channels
-        out = tf.concat((conv1, conv2, conv3, conv4), axis=3)
-        return out
-
-class BNSwishConv(layers.Layer):
-    def __init__(self, n_nodes, n_channels, stride, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.nodes = Sequential()
-        if stride == (1,1):
-            self.skip = tf.identity
-        elif stride == (2,2):
-            # We have to rescale the input in order to combine it
-            self.skip = SkipScaler(n_channels)
-        for i in range(n_nodes):
-            self.nodes.add(layers.BatchNormalization())
-            self.nodes.add(layers.Activation(activations.swish))
-            # 
-            self.nodes.add(layers.Conv2D(
-                n_channels, 
-                (3, 3), 
-                # Only apply rescaling on first node
-                stride if i == 0 else (1,1), 
-                padding="same"
-            ))
-        self.se = SqueezeExcitation()
-
-    def call(self, input):
-        skipped = self.skip(input)
-        x = self.nodes(input)
-        x = self.se(x)
-        return skipped + x
-
 class Sampler(layers.Layer):
     def __init__(self, n_latent_scales, n_groups_per_scale, n_latent_per_group, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -84,8 +35,7 @@ class Sampler(layers.Layer):
                 )
                 if scale == 0 and group == 0:
                     # Dummy value to maintain indexing
-                    pass
-                    # self.dec_sampler.append(None)
+                    self.dec_sampler.append(None)
                 else:
                     sampler = Sequential()
                     sampler.add(layers.ELU())
@@ -96,7 +46,7 @@ class Sampler(layers.Layer):
 
     def sample(self, mu, log_sigma):
         # reparametrization trick
-        z = mu + tf.random.normal(shape=mu.shape) * tf.math.exp(log_sigma)
+        z = mu + tf.random.normal(shape=mu.shape) * log_sigma
         return z
 
     def get_params(self, sampler, z_idx, prior):

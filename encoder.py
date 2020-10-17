@@ -32,13 +32,13 @@ class Encoder(layers.Layer):
         self.groups = []
         for scale in range(n_latent_scales):
             n_groups = n_groups_per_scale[scale]
-            for group in range(n_groups):
+            for group_idx in range(n_groups):
                 output_channels = n_encoder_channels * mult
                 group = Sequential()
                 for _ in range(res_cells_per_group):
                     group.add(EncodingResidualCell(output_channels))
                 self.groups.append(group)
-                if not (scale == n_latent_scales - 1 and group == n_groups - 1):
+                if not (scale == n_latent_scales - 1 and group_idx == n_groups - 1):
                     # We apply a convolutional between each group except the final output
                     self.groups.append(EncoderDecoderCombiner(output_channels))
             # We downsample in the end of each scale except last

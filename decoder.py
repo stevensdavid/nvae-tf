@@ -19,7 +19,7 @@ class Decoder(layers.Layer):
     ):
         super().__init__(**kwargs)
         # these 4s should be changed
-        self.h = tf.Variable(tf.zeros((1, 4, 4, n_decoder_channels)), trainable=True)
+        self.h = tf.Variable(tf.zeros((4, 4, n_decoder_channels)), trainable=True)
         # Initialize encoder tower
         self.groups = []
         # self.sampler = sampler
@@ -36,20 +36,22 @@ class Decoder(layers.Layer):
                 self.groups.append(DecoderSampleCombiner(output_channels))
             
             if scale < n_latent_scales - 1:
-                output_channels = n_decoder_channels * mult
+                output_channels = n_decoder_channels * mult / SCALE_FACTOR
                 self.groups.append(
                     Rescaler(
-                        output_channels, scale_factor=2, rescale_type=RescaleType.UP
+                        output_channels, scale_factor=SCALE_FACTOR, rescale_type=RescaleType.UP
                     )
                 )
                 mult /= SCALE_FACTOR
         self.final_dec = GenerativeResidualCell(mult*n_decoder_channels)
+        self.mult = mult
 
     def call(self, prior, enc_dec_combiners: List):
         z_params = []
         z0, params = self.sampler(prior, z_idx=0)
         z_params.append(params)
-        x = self.groups[0](self.h, z0)
+        h = tf.stack([self.h]*z0.shape[0], axis=0)
+        x = self.groups[0](h, z0)
         
         combine_idx = 0
         for group in self.groups[1:]:
@@ -59,7 +61,8 @@ class Decoder(layers.Layer):
                 z_params.append(params)
                 x = group(x, z_sample)
                 combine_idx += 1
-            x = group(x)
+            else:
+                x = group(x)
         
         return self.final_dec(x), z_params
 
@@ -70,6 +73,8 @@ class DecoderSampleCombiner(layers.Layer):
         self.conv = layers.Conv2D(output_channels, (1,1), strides=(1,1), padding="same")
     
     def call(self, x, z):
+        # z=8x4x4x2
+        # h=1x4x4x3
         output = tf.concat((x, z), axis=3)
         output = self.conv(output)
         return output
