@@ -1,3 +1,5 @@
+from tensorflow.python.keras.backend import update
+from tensorflow.python.keras.engine.sequential import Sequential
 from postprocess import Postprocess
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale
 from decoder import Decoder
@@ -30,22 +32,29 @@ def calculate_kl_loss(z_params):
     return loss
 
 
-def calculate_recon_loss(input, reconstruction):
+def calculate_recon_loss(inputs, reconstruction):
     log_probs = distributions.Bernoulli(
         logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
-    ).log_prob(input)
+    ).log_prob(inputs)
     return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
 
 
 def calculate_spectral_and_bn_loss(lambda_, encoder, decoder):
     bn_loss = 0
     spectral_loss = 0
+    def update_loss(layer):
+        nonlocal spectral_loss, bn_loss
+        if isinstance(layer, layers.Conv2D):
+            spectral_loss += tf.math.reduce_max(layer.weights[0])
+        elif isinstance(layer, layers.BatchNormalization):
+            bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights[0]))
+        elif hasattr(layer, "layers"):
+            for inner_layer in layer.layers:
+                update_loss(inner_layer)
+
     for model in [encoder, decoder]:
         for layer in model.groups:
-            if isinstance(layer, layers.Conv2D):
-                spectral_loss += tf.math.reduce_max(layer.weights)
-            elif isinstance(layer, layers.BatchNormalization):
-                bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights))
+            update_loss(layer)
     return lambda_ * spectral_loss, lambda_ * bn_loss
 
 
@@ -90,18 +99,19 @@ class NVAE(tf.keras.Model):
             n_latent_scales=n_latent_scales,
             n_groups_per_scale=list(reversed(n_groups_per_scale)),
             mult=mult,
+            scale_factor=scale_factor,
         )
         mult = self.decoder.mult
         self.postprocess = Postprocess(
             n_postprocess_blocks,
             n_post_process_cells,
-            mult,
-            n_decoder_channels,
-            scale_factor,
+            scale_factor=scale_factor,
+            mult=mult,
+            n_channels_decoder=n_decoder_channels,
         )
 
-    def call(self, input):
-        x = self.preprocess(input)
+    def call(self, inputs):
+        x = self.preprocess(inputs)
         enc_dec_combiners, final_x = self.encoder(x)
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
@@ -128,7 +138,7 @@ class NVAE(tf.keras.Model):
         with tf.GradientTape() as tape:
             reconstruction, z_params = self(data)
             kl_loss = calculate_kl_loss(z_params)
-            recon_loss = calculate_recon_loss(input, reconstruction)
+            recon_loss = calculate_recon_loss(data, reconstruction)
             spectral_loss, bn_loss = calculate_spectral_and_bn_loss(
                 self.sr_lambda, self.encoder, self.decoder
             )

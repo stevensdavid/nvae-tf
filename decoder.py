@@ -4,7 +4,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, activations, Sequential
 
 
-class Decoder(layers.Layer):
+class Decoder(tf.keras.Model):
     def __init__(
         self,
         n_decoder_channels,
@@ -76,7 +76,7 @@ class Decoder(layers.Layer):
         return self.final_dec(x), z_params
 
 
-class DecoderSampleCombiner(layers.Layer):
+class DecoderSampleCombiner(tf.keras.Model):
     def __init__(self, output_channels, **kwargs):
         super().__init__(**kwargs)
         self.conv = layers.Conv2D(
@@ -89,7 +89,7 @@ class DecoderSampleCombiner(layers.Layer):
         return output
 
 
-class GenerativeResidualCell(layers.Layer):
+class GenerativeResidualCell(tf.keras.Model):
     """Generative network residual cell in NVAE architecture"""
 
     def __init__(self, output_channels, expansion_ratio=6, **kwargs):
@@ -105,8 +105,8 @@ class GenerativeResidualCell(layers.Layer):
         self.batch_norm4 = layers.BatchNormalization()
         self.se = SqueezeExcitation()
 
-    def call(self, input):
-        x = self.batch_norm1(input)
+    def call(self, inputs):
+        x = self.batch_norm1(inputs)
         x = self.conv1(x)
         x = activations.swish(self.batch_norm2(x))
         x = self.depth_conv(x)
@@ -114,4 +114,4 @@ class GenerativeResidualCell(layers.Layer):
         x = self.conv2(x)
         x = self.batch_norm4(x)
         x = self.se(x)
-        return input + x
+        return inputs + x

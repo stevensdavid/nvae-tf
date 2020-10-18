@@ -1,23 +1,26 @@
-# import tensorflow as tf
-# tf.config.experimental.set_visible_devices([], "GPU")
 from argparse import ArgumentParser
 import os
 import tensorflow as tf
 from tensorflow.keras import callbacks
 import random
 import numpy as np
-from tensorflow.python.keras.engine import training
 
 
 def main(args):
+    print(f"Training with args: {args}")
+    if args.cpu:
+        tf.config.experimental.set_visible_devices([], "GPU")
+    else:
+        physical_devices = tf.config.list_physical_devices('GPU') 
+        tf.config.experimental.set_memory_growth(physical_devices[0], True)
+    # Fix seeds
     tf.random.set_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
     # Imported here so seed can be set before imports
     from models import NVAE
     from datasets import load_mnist
-
-    train_data, test_data = load_mnist(batch_size=8)
+    train_data, test_data = load_mnist(batch_size=args.batch_size)
 
     if args.resume_from > 0:
         model = tf.keras.models.load_model(
@@ -31,7 +34,7 @@ def main(args):
             n_preprocess_blocks=args.n_preprocess_blocks,
             n_preprocess_cells=args.n_preprocess_cells,
             n_postprocess_blocks=args.n_postprocess_blocks,
-            n_post_process_cells=args.n_post_process_cells,
+            n_post_process_cells=args.n_postprocess_cells,
             n_latent_per_group=args.n_latent_per_group,
             n_latent_scales=len(args.n_groups_per_scale),
             n_groups_per_scale=args.n_groups_per_scale,
@@ -69,53 +72,59 @@ def main(args):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--epochs", type=int, help="Number of epochs to train")
-    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--epochs", type=int, default=400, help="Number of epochs to train")
+    parser.add_argument("--batch_size", default=16, type=int)
     # Hyperparameters
     parser.add_argument(
-        "--n_encoder_channels", type=int, help="Number of initial channels in encoder"
+        "--n_encoder_channels", type=int, default=32, help="Number of initial channels in encoder"
     )
     parser.add_argument(
-        "--n_decoder_channels", type=int, help="Number of initial channels in decoder"
+        "--n_decoder_channels", type=int, default=32, help="Number of initial channels in decoder"
     )
     parser.add_argument(
         "--res_cells_per_group",
         type=int,
+        default=1,
         help="Number of residual cells to use within each group",
     )
     parser.add_argument(
         "--n_preprocess_blocks",
         type=int,
+        default=2,
         help="Number of blocks to use in the preprocessing layers",
     )
     parser.add_argument(
         "--n_preprocess_cells",
         type=int,
+        default=3,
         help="Number of cells to use within each preprocessing block",
     )
     parser.add_argument(
         "--n_postprocess_blocks",
         type=int,
+        default=2,
         help="Number of blocks to use in the postprocessing layers",
     )
     parser.add_argument(
         "--n_postprocess_cells",
         type=int,
+        default=3,
         help="Number of cells to use within each postprocessing block",
     )
     parser.add_argument(
         "--n_latent_per_group",
         type=int,
+        default=20,
         help="Number of latent stochastic variables to sample in each group",
     )
     parser.add_argument(
         "--n_groups_per_scale",
         nargs="+",
-        default=[10, 5],
+        default=[5, 10],
         help="Number of groups to include in each resolution scale",
     )
     parser.add_argument(
-        "--sr_lambda", type=float, help="Spectral regularisation strength"
+        "--sr_lambda", type=float, default=0.01, help="Spectral regularisation strength"
     )
     parser.add_argument(
         "--scale_factor",
@@ -145,7 +154,7 @@ def parse_args():
     parser.add_argument(
         "--log_frequency",
         type=int,
-        default=100,
+        default=1,
         help="Number of epochs between each log write",
     )
     parser.add_argument(
@@ -156,11 +165,11 @@ def parse_args():
     parser.add_argument(
         "--model_save_frequency",
         type=int,
-        default=10000,
+        default=50,
         help="Number of epochs between each model save",
     )
     parser.add_argument(
-        "--seed", type=int, help="Random seed to use for initialization"
+        "--seed", type=int, default=1, help="Random seed to use for initialization"
     )
     return parser.parse_args()
 

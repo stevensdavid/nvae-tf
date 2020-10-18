@@ -14,7 +14,7 @@ class DistributionParams:
     dec_log_sigma: float
 
 
-class Sampler(layers.Layer):
+class Sampler(tf.keras.Model):
     def __init__(
         self,
         n_latent_scales,
@@ -88,7 +88,7 @@ class RescaleType(Enum):
     DOWN = auto()
 
 
-class SqueezeExcitation(layers.Layer):
+class SqueezeExcitation(tf.keras.Model):
     """Squeeze and Excitation block as defined by Hu, et al. (2019)
 
     See Also
@@ -107,9 +107,9 @@ class SqueezeExcitation(layers.Layer):
         self.dense1 = layers.Dense(units=num_hidden)
         self.dense2 = layers.Dense(units=c)
 
-    def call(self, input):
+    def call(self, inputs):
         # x = tf.math.reduce_mean(x, axis=[1, 2])
-        x = self.gap(input)
+        x = self.gap(inputs)
         x = self.dense1(x)
         x = activations.relu(x)
         x = self.dense2(x)
@@ -120,10 +120,10 @@ class SqueezeExcitation(layers.Layer):
         x = tf.expand_dims(x, 2)
         # target_shape = tf.TensorShape([-1, 1, 1, n_channels])
         # x = tf.reshape(x, target_shape)
-        return x * input
+        return x * inputs
 
 
-class Rescaler(layers.Layer):
+class Rescaler(tf.keras.Model):
     def __init__(self, n_channels, scale_factor, rescale_type, **kwargs) -> None:
         super().__init__(**kwargs)
         self.bn = layers.BatchNormalization()

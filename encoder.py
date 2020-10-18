@@ -2,9 +2,10 @@ from common import RescaleType, Rescaler, SqueezeExcitation
 from typing import List
 from tensorflow.keras import layers, Sequential, activations
 from functools import partial
+import tensorflow as tf
 
 
-class EncoderDecoderCombiner(layers.Layer):
+class EncoderDecoderCombiner(tf.keras.Model):
     def __init__(self, n_channels, **kwargs) -> None:
         super().__init__(**kwargs)
         self.decoder_conv = layers.Conv2D(n_channels, (1, 1))
@@ -14,7 +15,7 @@ class EncoderDecoderCombiner(layers.Layer):
         return encoder_x + x
 
 
-class Encoder(layers.Layer):
+class Encoder(tf.keras.Model):
     def __init__(
         self,
         n_encoder_channels,
@@ -76,7 +77,7 @@ class Encoder(layers.Layer):
         return enc_dec_combiners, final
 
 
-class EncodingResidualCell(layers.Layer):
+class EncodingResidualCell(tf.keras.Model):
     """Encoding network residual cell in NVAE architecture"""
 
     def __init__(self, output_channels, **kwargs):
@@ -87,9 +88,9 @@ class EncodingResidualCell(layers.Layer):
         self.conv2 = layers.Conv2D(output_channels, (3, 3), padding="same")
         self.se = SqueezeExcitation()
 
-    def call(self, input):
+    def call(self, inputs):
         # 8x24x24x32
-        x = activations.swish(self.batch_norm1(input))
+        x = activations.swish(self.batch_norm1(inputs))
         # 8x24x24x32
         x = self.conv1(x)
         # 8x22x22x32
@@ -99,4 +100,4 @@ class EncodingResidualCell(layers.Layer):
         # 8x20x20x32
         x = self.se(x)
         # 8x32
-        return input + x
+        return inputs + x

@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras import activations, Sequential, layers
 
 
-class Preprocess(layers.Layer):
+class Preprocess(tf.keras.Model):
     def __init__(
         self, n_encoder_channels, n_blocks, n_cells, scale_factor, mult=1, **kwargs
     ) -> None:
@@ -22,11 +22,11 @@ class Preprocess(layers.Layer):
             mult *= scale_factor
         self.mult = mult
 
-    def call(self, input):
-        return self.pre_process(input)
+    def call(self, inputs):
+        return self.pre_process(inputs)
 
 
-class SkipScaler(layers.Layer):
+class SkipScaler(tf.keras.Model):
     def __init__(self, n_channels, **kwargs):
         super().__init__(**kwargs)
         # Each convolution handles a quarter of the channels
@@ -56,7 +56,7 @@ class SkipScaler(layers.Layer):
         return out
 
 
-class BNSwishConv(layers.Layer):
+class BNSwishConv(tf.keras.Model):
     def __init__(self, n_nodes, n_channels, stride, **kwargs) -> None:
         super().__init__(**kwargs)
         self.nodes = Sequential()
@@ -80,8 +80,8 @@ class BNSwishConv(layers.Layer):
             )
         self.se = SqueezeExcitation()
 
-    def call(self, input):
-        skipped = self.skip(input)
-        x = self.nodes(input)
+    def call(self, inputs):
+        skipped = self.skip(inputs)
+        x = self.nodes(inputs)
         x = self.se(x)
         return skipped + x
