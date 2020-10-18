@@ -33,17 +33,64 @@ def main(args):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--n_encoder_channels", type=int, help="")
-    parser.add_argument("--n_decoder_channels", type=int, help="")
-    parser.add_argument("--res_cells_per_group", type=int, help="")
-    parser.add_argument("--n_preprocess_blocks", type=int, help="")
-    parser.add_argument("--n_preprocess_cells", type=int, help="")
-    parser.add_argument("--n_postprocess_blocks", type=int, help="")
-    parser.add_argument("--n_postprocess_cells", type=int, help="")
-    parser.add_argument("--n_latent_per_group", type=int, help="")
-    parser.add_argument("--n_groups_per_scale", type=int, help="")
-    parser.add_argument("--sr_lambda", type=int, help="")
-    parser.add_argument("--scale_factor", type=int, default=2, help="")
+    parser.add_argument(
+        "--n_encoder_channels", type=int, help="Number of initial channels in encoder"
+    )
+    parser.add_argument(
+        "--n_decoder_channels", type=int, help="Number of initial channels in decoder"
+    )
+    parser.add_argument(
+        "--res_cells_per_group",
+        type=int,
+        help="Number of residual cells to use within each group",
+    )
+    parser.add_argument(
+        "--n_preprocess_blocks",
+        type=int,
+        help="Number of blocks to use in the preprocessing layers",
+    )
+    parser.add_argument(
+        "--n_preprocess_cells",
+        type=int,
+        help="Number of cells to use within each preprocessing block",
+    )
+    parser.add_argument(
+        "--n_postprocess_blocks",
+        type=int,
+        help="Number of blocks to use in the postprocessing layers",
+    )
+    parser.add_argument(
+        "--n_postprocess_cells",
+        type=int,
+        help="Number of cells to use within each postprocessing block",
+    )
+    parser.add_argument(
+        "--n_latent_per_group",
+        type=int,
+        help="Number of latent stochastic variables to sample in each group",
+    )
+    parser.add_argument(
+        "--n_groups_per_scale",
+        nargs="+",
+        default=[10, 5],
+        help="Number of groups to include in each resolution scale",
+    )
+    parser.add_argument(
+        "--sr_lambda", type=float, help="Spectral regularisation strength"
+    )
+    parser.add_argument(
+        "--scale_factor",
+        type=int,
+        default=2,
+        help="Factor to rescale image with in each scaling step",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["mnist"],
+        default="mnist",
+        help="Dataset to use for training",
+    )
 
 
 if __name__ == "__main__":
