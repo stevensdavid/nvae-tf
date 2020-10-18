@@ -33,13 +33,16 @@ def calculate_recon_loss(input, reconstruction):
     ).log_prob(input)
     return -tf.math.reduce_sum(log_probs, axis=[1,2,3])
 
-def calculate_spectral_loss(lambda_, encoder, decoder):
-    loss = 0
-    for layer in encoder.groups:
-        if isinstance(layer, layers.Conv2D):
-            weights = layer.weights
-            loss += tf.math.reduce_max(weights)
-    return lambda_ * loss
+def calculate_spectral_and_bn_loss(lambda_, encoder, decoder):
+    bn_loss = 0
+    spectral_loss = 0
+    for model in [encoder, decoder]:
+        for layer in model.groups:
+            if isinstance(layer, layers.Conv2D):
+                spectral_loss += tf.math.reduce_max(layer.weights)
+            elif isinstance(layer, layers.BatchNormalization):
+                bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights))
+    return lambda_ * spectral_loss, lambda_ * bn_loss
 
 class NVAE(tf.keras.Model):
     def __init__(
@@ -115,9 +118,9 @@ class NVAE(tf.keras.Model):
             reconstruction, z_params = self(data)
             kl_loss = calculate_kl_loss(z_params)
             recon_loss = calculate_recon_loss(input, reconstruction)
-            spectral_loss = calculate_spectral_loss(self.sr_lambda, self.encoder, self.decoder)
+            spectral_loss, bn_loss = calculate_spectral_and_bn_loss(self.sr_lambda, self.encoder, self.decoder)
             loss = tf.math.reduce_mean(recon_loss+kl_loss)
-            total_loss = loss + spectral_loss
+            total_loss = loss + spectral_loss + bn_loss
             # self.add_loss(loss+spectral_loss)
         gradients = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_weights))
