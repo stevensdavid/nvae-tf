@@ -101,9 +101,9 @@ class NVAE(tf.keras.Model):
             data = data[0]
         with tf.GradientTape() as tape:
             reconstruction, z_params = self(data)
-            kl_loss = calculate_kl_loss(self, z_params)
-            recon_loss = calculate_recon_loss(self, data, reconstruction)
-            spectral_loss, bn_loss = calculate_spectral_and_bn_loss(self)
+            kl_loss = self.calculate_kl_loss(z_params)
+            recon_loss = self.calculate_recon_loss(data, reconstruction)
+            spectral_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + spectral_loss + bn_loss
             # self.add_loss(loss+spectral_loss)
@@ -154,7 +154,7 @@ class NVAE(tf.keras.Model):
                 v = tf.linalg.matmul(tf.transpose(w),self.u[spectral_index])
                 v_hat = v / tf.math.l2_normalize(v)
                 u_ = tf.linalg.matmul(w, v_hat)
-                u_hat = u_ / tf.math.l2_normalize(u)
+                u_hat = u_ / tf.math.l2_normalize(u_)
                 sigma = tf.linalg.matmul(tf.linalg.matmul(tf.transpose(u_hat),w),v_hat)
                 w_spec = w / tf.linalg.matmul(sigma, w)
                 spectral_loss += tf.math.reduce_max(w_spec)
