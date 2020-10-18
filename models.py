@@ -67,15 +67,17 @@ class NVAE(tf.keras.Model):
 
 
     def _initialize_u(self):
+        def add_u(layer):
+            if isinstance(layer, layers.Conv2D):
+                shape = tf.shape(layer.weights[0])
+                self.u.append(tf.Variable(tf.random_normal_initializer(shape), trainable=False))
+            elif hasattr(layer, "layers"):
+                for inner_layer in layer.layers:
+                    add_u(inner_layer)
+        
         for model in [self.encoder, self.decoder]:
             for layer in model.groups:
-                if isinstance(layer, layers.Conv2D):
-                    shape = tf.shape(layer.weights[0])
-                    self.u.append(tf.Variable(tf.random_normal_initializer(shape), trainable=False))
-                elif hasattr(layer, "layers"):
-                    for inner_layer in layer.layers:
-                        shape = tf.shape(inner_layer.weights[0])
-                        self.u.append(tf.Variable(tf.random_normal_initializer(shape), trainable=False))
+                add_u(layer)
 
     def call(self, inputs):
         x = self.preprocess(inputs)
