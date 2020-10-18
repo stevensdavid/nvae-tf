@@ -15,7 +15,14 @@ class DistributionParams:
 
 
 class Sampler(layers.Layer):
-    def __init__(self, n_latent_scales, n_groups_per_scale, n_latent_per_group, scale_factor, **kwargs) -> None:
+    def __init__(
+        self,
+        n_latent_scales,
+        n_groups_per_scale,
+        n_latent_per_group,
+        scale_factor,
+        **kwargs
+    ) -> None:
         super().__init__(**kwargs)
         # Initialize sampler
         self.enc_sampler = []
@@ -29,7 +36,9 @@ class Sampler(layers.Layer):
                 self.enc_sampler.append(
                     # NVLabs use padding 1 here?
                     layers.Conv2D(
-                        scale_factor * self.n_latent_per_group, kernel_size=(3, 3), padding="same"
+                        scale_factor * self.n_latent_per_group,
+                        kernel_size=(3, 3),
+                        padding="same",
                     )
                 )
                 if scale == 0 and group == 0:
@@ -39,9 +48,12 @@ class Sampler(layers.Layer):
                     sampler = Sequential()
                     sampler.add(layers.ELU())
                     # NVLabs use padding 0 here?
-                    sampler.add(layers.Conv2D(scale_factor * self.n_latent_per_group, kernel_size=(1,1)))
+                    sampler.add(
+                        layers.Conv2D(
+                            scale_factor * self.n_latent_per_group, kernel_size=(1, 1)
+                        )
+                    )
                     self.dec_sampler.append(sampler)
-
 
     def sample(self, mu, log_sigma):
         # reparametrization trick
@@ -57,7 +69,12 @@ class Sampler(layers.Layer):
     def call(self, prior, z_idx) -> Tuple[tf.Tensor, DistributionParams]:
         enc_mu, enc_log_sigma = self.get_params(self.enc_sampler, z_idx, prior)
         if z_idx == 0:
-            params = DistributionParams(enc_mu, enc_log_sigma, None, None)
+            params = DistributionParams(
+                enc_mu,
+                enc_log_sigma,
+                tf.zeros_like(enc_mu),
+                tf.zeros_like(enc_log_sigma),
+            )
             return self.sample(enc_mu, enc_log_sigma), params
         # Get decoder offsets
         dec_mu, dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
@@ -105,6 +122,7 @@ class SqueezeExcitation(layers.Layer):
         # x = tf.reshape(x, target_shape)
         return x * input
 
+
 class Rescaler(layers.Layer):
     def __init__(self, n_channels, scale_factor, rescale_type, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -112,7 +130,9 @@ class Rescaler(layers.Layer):
         self.mode = rescale_type
         self.factor = scale_factor
         if rescale_type == RescaleType.UP:
-            self.conv = layers.Conv2D(n_channels, (3, 3), strides=(1, 1), padding="same")
+            self.conv = layers.Conv2D(
+                n_channels, (3, 3), strides=(1, 1), padding="same"
+            )
         elif rescale_type == RescaleType.DOWN:
             self.conv = layers.Conv2D(
                 n_channels, (3, 3), strides=(self.factor, self.factor), padding="same"
