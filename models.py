@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from preprocess import Preprocess
 from tensorflow_probability import distributions
+import os
 
 
 class NVAE(tf.keras.Model):
@@ -44,7 +45,6 @@ class NVAE(tf.keras.Model):
             mult=mult,
             scale_factor=scale_factor,
         )
-        # self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         mult = self.encoder.mult
         self.decoder = Decoder(
             n_decoder_channels=n_decoder_channels,

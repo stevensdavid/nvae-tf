@@ -11,8 +11,16 @@ def main(args):
     if args.cpu:
         tf.config.experimental.set_visible_devices([], "GPU")
     else:
-        physical_devices = tf.config.list_physical_devices('GPU') 
+        physical_devices = tf.config.list_physical_devices("GPU")
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
+    if args.mixed_precision:
+        from tensorflow.keras.mixed_precision import experimental as mixed_precision
+
+        policy = mixed_precision.Policy("mixed_float16")
+        mixed_precision.set_policy(policy)
+        os.environ["MIXED_PRECISION"] = "enabled"
+    else:
+        os.environ["MIXED_PRECISION"] = ""  # Uses falsiness of empty string
     # Fix seeds
     tf.random.set_seed(args.seed)
     random.seed(args.seed)
@@ -20,6 +28,7 @@ def main(args):
     # Imported here so seed can be set before imports
     from models import NVAE
     from datasets import load_mnist
+
     train_data, test_data = load_mnist(batch_size=args.batch_size)
 
     if args.resume_from > 0:
@@ -72,14 +81,22 @@ def main(args):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=400, help="Number of epochs to train")
-    parser.add_argument("--batch_size", default=16, type=int)
+    parser.add_argument(
+        "--epochs", type=int, default=400, help="Number of epochs to train"
+    )
+    parser.add_argument("--batch_size", default=64, type=int)
     # Hyperparameters
     parser.add_argument(
-        "--n_encoder_channels", type=int, default=32, help="Number of initial channels in encoder"
+        "--n_encoder_channels",
+        type=int,
+        default=32,
+        help="Number of initial channels in encoder",
     )
     parser.add_argument(
-        "--n_decoder_channels", type=int, default=32, help="Number of initial channels in decoder"
+        "--n_decoder_channels",
+        type=int,
+        default=32,
+        help="Number of initial channels in decoder",
     )
     parser.add_argument(
         "--res_cells_per_group",
@@ -165,8 +182,13 @@ def parse_args():
     parser.add_argument(
         "--model_save_frequency",
         type=int,
-        default=50,
+        default=10,
         help="Number of epochs between each model save",
+    )
+    parser.add_argument(
+        "--mixed_precision",
+        action="store_true",
+        help="Use mixed precision training. Experimental and currently slower.",
     )
     parser.add_argument(
         "--seed", type=int, default=1, help="Random seed to use for initialization"
