@@ -64,6 +64,9 @@ class NVAE(tf.keras.Model):
             n_channels_decoder=n_decoder_channels,
         )
         self.u = []
+
+
+    def _initialize_u(self):
         for model in [self.encoder, self.decoder]:
             for layer in model.groups:
                 if isinstance(layer, layers.Conv2D):
@@ -144,6 +147,8 @@ class NVAE(tf.keras.Model):
         return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
 
     def calculate_spectral_and_bn_loss(self):
+        if not self.u:
+            self._initialize_u()
         bn_loss = 0
         spectral_loss = 0
         spectral_index = 0
