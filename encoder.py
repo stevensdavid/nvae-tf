@@ -1,4 +1,3 @@
-
 from common import RescaleType, Rescaler, SqueezeExcitation
 from typing import List
 from tensorflow.keras import layers, Sequential, activations
@@ -46,7 +45,9 @@ class Encoder(layers.Layer):
                 output_channels = n_encoder_channels * mult * scale_factor
                 self.groups.append(
                     Rescaler(
-                        output_channels, scale_factor=scale_factor, rescale_type=RescaleType.DOWN
+                        output_channels,
+                        scale_factor=scale_factor,
+                        rescale_type=RescaleType.DOWN,
                     )
                 )
                 mult *= scale_factor

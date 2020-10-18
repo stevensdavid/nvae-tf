@@ -12,26 +12,30 @@ def calculate_kl_loss(z_params):
     # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma
     # -KL(q(z1|x)||p(z1)) - sum[ KL(q(zl|x,z<l) || p(z|z<l))]
     kl_per_group = []
-    #---------TODO: Calculate first term of KL--------------
-    #n_groups x batch_size x 4
+    # ---------TODO: Calculate first term of KL--------------
+    # n_groups x batch_size x 4
     for g in z_params[1:]:
         enc_sigma = tf.math.exp(g.enc_log_sigma)
         dec_sigma = tf.math.exp(g.dec_log_sigma)
         # batch_size x H x W x C
-        kl = 0.5*(g.dec_mu**2/enc_sigma**2 + dec_sigma**2 - g.dec_log_sigma**2 - 1)
-        kl = tf.math.reduce_sum(kl, axis=[1,2,3])
+        kl = 0.5 * (
+            g.dec_mu ** 2 / enc_sigma ** 2 + dec_sigma ** 2 - g.dec_log_sigma ** 2 - 1
+        )
+        kl = tf.math.reduce_sum(kl, axis=[1, 2, 3])
         kl_per_group.append(kl)
-    loss = tf.math.reduce_sum(tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0])
-    
+    loss = tf.math.reduce_sum(
+        tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
+    )
+
     return loss
+
 
 def calculate_recon_loss(input, reconstruction):
     log_probs = distributions.Bernoulli(
-        logits=reconstruction,
-        dtype=tf.float32,
-        allow_nan_stats=False
+        logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
     ).log_prob(input)
-    return -tf.math.reduce_sum(log_probs, axis=[1,2,3])
+    return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
+
 
 def calculate_spectral_loss(lambda_, encoder, decoder):
     loss = 0
@@ -40,6 +44,7 @@ def calculate_spectral_loss(lambda_, encoder, decoder):
             weights = layer.weights
             loss += tf.math.reduce_max(weights)
     return lambda_ * loss
+
 
 class NVAE(tf.keras.Model):
     def __init__(
@@ -71,7 +76,7 @@ class NVAE(tf.keras.Model):
             n_latent_scales=n_latent_scales,
             n_groups_per_scale=n_groups_per_scale,
             mult=mult,
-            scale_factor=scale_factor
+            scale_factor=scale_factor,
         )
         # self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         mult = self.encoder.mult
@@ -84,7 +89,13 @@ class NVAE(tf.keras.Model):
             mult=mult,
         )
         mult = self.decoder.mult
-        self.postprocess = Postprocess(n_postprocess_blocks, n_post_process_cells, mult, n_decoder_channels, scale_factor)
+        self.postprocess = Postprocess(
+            n_postprocess_blocks,
+            n_post_process_cells,
+            mult,
+            n_decoder_channels,
+            scale_factor,
+        )
 
     def call(self, input):
         x = self.preprocess(input)
@@ -115,8 +126,10 @@ class NVAE(tf.keras.Model):
             reconstruction, z_params = self(data)
             kl_loss = calculate_kl_loss(z_params)
             recon_loss = calculate_recon_loss(input, reconstruction)
-            spectral_loss = calculate_spectral_loss(self.sr_lambda, self.encoder, self.decoder)
-            loss = tf.math.reduce_mean(recon_loss+kl_loss)
+            spectral_loss = calculate_spectral_loss(
+                self.sr_lambda, self.encoder, self.decoder
+            )
+            loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + spectral_loss
             # self.add_loss(loss+spectral_loss)
         gradients = tape.gradient(total_loss, self.trainable_weights)
@@ -125,9 +138,8 @@ class NVAE(tf.keras.Model):
             "loss": total_loss,
             "reconstruction_loss": recon_loss,
             "kl_loss": kl_loss,
-            "spectral_loss": spectral_loss
+            "spectral_loss": spectral_loss,
         }
 
     def sample(self, n_samples, t):
         pass
-

@@ -4,6 +4,7 @@ from models import NVAE
 from datasets import load_mnist
 from argparse import ArgumentParser
 
+
 def main(args):
     train_data, test_data = load_mnist(batch_size=8)
     model = NVAE(
@@ -18,15 +19,17 @@ def main(args):
         n_latent_scales=len(args.n_groups_per_scale),
         n_groups_per_scale=args.n_groups_per_scale,
         sr_lambda=args.sr_lambda,
-        scale_factor=args.scale_factor
+        scale_factor=args.scale_factor,
     )
     model.compile(optimizer="adamax", run_eagerly=True)
-    callbacks = [
-
-    ]
+    callbacks = []
     # for batch_x, _ in train_data:
     #     model(batch_x)
-    model.fit(train_data, epochs=10, )
+    model.fit(
+        train_data,
+        epochs=10,
+    )
+
 
 def parse_args():
     parser = ArgumentParser()
@@ -42,6 +45,7 @@ def parse_args():
     parser.add_argument("--sr_lambda", type=int, help="")
     parser.add_argument("--scale_factor", type=int, default=2, help="")
 
+
 if __name__ == "__main__":
-    
+
     pass
