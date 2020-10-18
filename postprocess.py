@@ -1,6 +1,5 @@
 from common import RescaleType, Rescaler, SqueezeExcitation
 from tensorflow.keras import activations
-from config import SCALE_FACTOR
 from tensorflow.keras import layers, Sequential
 import tensorflow as tf
 
@@ -12,16 +11,17 @@ class Postprocess(layers.Layer):
         n_cells,
         mult,
         n_channels_decoder,
+        scale_factor,
         **kwargs
     ) -> None:
         super().__init__(**kwargs)
         self.layers = Sequential()
         for block in range(n_blocks):
             # First cell rescales
-            mult /= SCALE_FACTOR
+            mult /= scale_factor
             output_channels = n_channels_decoder * mult
             for cell_idx in range(n_cells):
-                self.layers.add(PostprocessCell(output_channels, n_nodes=1, upscale=cell_idx == 0))
+                self.layers.add(PostprocessCell(output_channels, n_nodes=1, upscale=cell_idx == 0, scale_factor=scale_factor))
         self.layers.add(layers.Conv2D(1, kernel_size=(3,3), padding="same"))
         self.mult = mult
         
@@ -31,15 +31,15 @@ class Postprocess(layers.Layer):
 
 
 class PostprocessCell(layers.Layer):
-    def __init__(self, n_channels, n_nodes, upscale=False, **kwargs) -> None:
+    def __init__(self, n_channels, n_nodes, scale_factor, upscale=False, **kwargs) -> None:
         super().__init__(**kwargs)
         self.layers = Sequential()
         if upscale:
-            self.skip = Rescaler(n_channels, scale_factor=SCALE_FACTOR, rescale_type=RescaleType.UP)
+            self.skip = Rescaler(n_channels, scale_factor=scale_factor, rescale_type=RescaleType.UP)
         else:
             self.skip = tf.identity
         for _ in range(n_nodes):
-            self.layers.add(PostprocessNode(n_channels, upscale=upscale))
+            self.layers.add(PostprocessNode(n_channels, upscale=upscale, scale_factor=scale_factor))
             if upscale:
                 # Only scale once in each cells
                 upscale = False
@@ -49,11 +49,11 @@ class PostprocessCell(layers.Layer):
 
 
 class PostprocessNode(layers.Layer):
-    def __init__(self, n_channels, upscale=False, expansion_ratio=6, **kwargs) -> None:
+    def __init__(self, n_channels, upscale=False, expansion_ratio=6, scale_factor, **kwargs) -> None:
         super().__init__(**kwargs)
         self.layers = Sequential()
         if upscale:
-            self.layers.add(Rescaler(n_channels, SCALE_FACTOR, rescale_type=RescaleType.UP))
+            self.layers.add(Rescaler(n_channels, scale_factor, rescale_type=RescaleType.UP))
         self.layers.add(layers.BatchNormalization())
         hidden_dim = n_channels * expansion_ratio
         self.layers.add(ConvBNSwish(hidden_dim, kernel_size=(1,1), stride=(1,1)))

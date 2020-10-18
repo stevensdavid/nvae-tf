@@ -47,7 +47,6 @@ class NVAE(tf.keras.Model):
         n_encoder_channels,
         n_decoder_channels,
         res_cells_per_group,
-        n_groups,
         n_preprocess_blocks,
         n_preprocess_cells,
         n_latent_per_group,
@@ -55,13 +54,14 @@ class NVAE(tf.keras.Model):
         n_groups_per_scale,
         n_postprocess_blocks,
         n_post_process_cells,
-        lambda_,
+        sr_lambda,
+        scale_factor,
         **kwargs
     ):
         super().__init__(**kwargs)
-        self.lambda_ = lambda_
+        self.sr_lambda = sr_lambda
         self.preprocess = Preprocess(
-            n_encoder_channels, n_preprocess_blocks, n_preprocess_cells
+            n_encoder_channels, n_preprocess_blocks, n_preprocess_cells, scale_factor
         )
         mult = self.preprocess.mult
         self.encoder = Encoder(
@@ -71,6 +71,7 @@ class NVAE(tf.keras.Model):
             n_latent_scales=n_latent_scales,
             n_groups_per_scale=n_groups_per_scale,
             mult=mult,
+            scale_factor=scale_factor
         )
         # self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         mult = self.encoder.mult
@@ -81,26 +82,51 @@ class NVAE(tf.keras.Model):
             n_latent_scales=n_latent_scales,
             n_groups_per_scale=list(reversed(n_groups_per_scale)),
             mult=mult,
-            # sampler=self.sampler
         )
         mult = self.decoder.mult
-        self.postprocess = Postprocess(n_postprocess_blocks, n_post_process_cells, mult, n_decoder_channels)
+        self.postprocess = Postprocess(n_postprocess_blocks, n_post_process_cells, mult, n_decoder_channels, scale_factor)
 
     def call(self, input):
         x = self.preprocess(input)
         enc_dec_combiners, final_x = self.encoder(x)
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
-        # z0 = self.decoder.sampler(prior=final_x, z_idx=0)
-        # reconstruction = self.decoder(z0, enc_dec_combiners)
         reconstruction, z_params = self.decoder(final_x, enc_dec_combiners)
         reconstruction = self.postprocess(reconstruction)
-        kl_loss = calculate_kl_loss(z_params)
-        recon_loss = calculate_recon_loss(input, reconstruction)
-        spectral_loss = calculate_spectral_loss(self.lambda_, self.encoder, self.decoder)
-        loss = tf.math.reduce_mean(recon_loss+kl_loss)
-        self.add_loss(loss+spectral_loss)
-        return reconstruction
+        return reconstruction, z_params
+
+    def train_step(self, data):
+        """Training step for NVAE
+
+        Args:
+            data (Union[tf.Tensor, Tuple[tf.Tensor, Any]]): Labeled or unlabeled images
+
+        Returns:
+            dict[str, float]: All loss values
+
+        Notes
+        =====
+        Adapted from Keras tutorial https://keras.io/examples/generative/vae/
+        """
+        if isinstance(data, tuple):
+            # We have labeled data. Remove the label.
+            data = data[0]
+        with tf.GradientTape() as tape:
+            reconstruction, z_params = self(data)
+            kl_loss = calculate_kl_loss(z_params)
+            recon_loss = calculate_recon_loss(input, reconstruction)
+            spectral_loss = calculate_spectral_loss(self.sr_lambda, self.encoder, self.decoder)
+            loss = tf.math.reduce_mean(recon_loss+kl_loss)
+            total_loss = loss + spectral_loss
+            # self.add_loss(loss+spectral_loss)
+        gradients = tape.gradient(total_loss, self.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_weights))
+        return {
+            "loss": total_loss,
+            "reconstruction_loss": recon_loss,
+            "kl_loss": kl_loss,
+            "spectral_loss": spectral_loss
+        }
 
     def sample(self, n_samples, t):
         pass

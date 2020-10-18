@@ -1,1 +1,0 @@
-SCALE_FACTOR = 2

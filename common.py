@@ -1,5 +1,4 @@
 from typing import Tuple
-from config import SCALE_FACTOR
 from enum import Enum, auto
 import tensorflow as tf
 
@@ -16,7 +15,7 @@ class DistributionParams:
 
 
 class Sampler(layers.Layer):
-    def __init__(self, n_latent_scales, n_groups_per_scale, n_latent_per_group, **kwargs) -> None:
+    def __init__(self, n_latent_scales, n_groups_per_scale, n_latent_per_group, scale_factor, **kwargs) -> None:
         super().__init__(**kwargs)
         # Initialize sampler
         self.enc_sampler = []
@@ -30,7 +29,7 @@ class Sampler(layers.Layer):
                 self.enc_sampler.append(
                     # NVLabs use padding 1 here?
                     layers.Conv2D(
-                        SCALE_FACTOR * self.n_latent_per_group, kernel_size=(3, 3), padding="same"
+                        scale_factor * self.n_latent_per_group, kernel_size=(3, 3), padding="same"
                     )
                 )
                 if scale == 0 and group == 0:
@@ -40,13 +39,13 @@ class Sampler(layers.Layer):
                     sampler = Sequential()
                     sampler.add(layers.ELU())
                     # NVLabs use padding 0 here?
-                    sampler.add(layers.Conv2D(SCALE_FACTOR * self.n_latent_per_group, kernel_size=(1,1)))
+                    sampler.add(layers.Conv2D(scale_factor * self.n_latent_per_group, kernel_size=(1,1)))
                     self.dec_sampler.append(sampler)
 
 
     def sample(self, mu, log_sigma):
         # reparametrization trick
-        z = mu + tf.random.normal(shape=mu.shape) * log_sigma
+        z = mu + tf.random.normal(shape=tf.shape(mu)) * log_sigma
         return z
 
     def get_params(self, sampler, z_idx, prior):
@@ -98,7 +97,12 @@ class SqueezeExcitation(layers.Layer):
         x = activations.relu(x)
         x = self.dense2(x)
         x = activations.sigmoid(x)
-        x = tf.reshape(x, (x.shape[0], 1, 1, -1))
+        # x is currently shaped (None, n_channels). We need to expand this for it to broadcast
+        # batch_size, n_channels = x.get_shape().as_list()
+        x = tf.expand_dims(x, 1)
+        x = tf.expand_dims(x, 2)
+        # target_shape = tf.TensorShape([-1, 1, 1, n_channels])
+        # x = tf.reshape(x, target_shape)
         return x * input
 
 class Rescaler(layers.Layer):
@@ -118,7 +122,7 @@ class Rescaler(layers.Layer):
         x = self.bn(input)
         x = activations.swish(x)
         if self.mode == RescaleType.UP:
-            _, height, width, _ = x.shape
+            _, height, width, _ = x.get_shape()
             x = tf.image.resize(
                 x, size=(self.factor * height, self.factor * width), method="nearest"
             )

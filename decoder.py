@@ -1,6 +1,5 @@
 from typing import List
 from common import RescaleType, SqueezeExcitation, Rescaler, Sampler
-from config import SCALE_FACTOR
 import tensorflow as tf
 from tensorflow.keras import layers, activations, Sequential
 
@@ -14,16 +13,14 @@ class Decoder(layers.Layer):
         n_latent_scales: int,
         n_groups_per_scale: List[int],
         mult: int,
-        # sampler: Sampler,
+        scale_factor: int,
         **kwargs
     ):
         super().__init__(**kwargs)
         # these 4s should be changed
         self.h = tf.Variable(tf.zeros((4, 4, n_decoder_channels)), trainable=True)
-        # Initialize encoder tower
+        self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group, scale_factor=scale_factor)
         self.groups = []
-        # self.sampler = sampler
-        self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         for scale in range(n_latent_scales):
             n_groups = n_groups_per_scale[scale]
             for group in range(n_groups):
@@ -36,21 +33,25 @@ class Decoder(layers.Layer):
                 self.groups.append(DecoderSampleCombiner(output_channels))
             
             if scale < n_latent_scales - 1:
-                output_channels = n_decoder_channels * mult / SCALE_FACTOR
+                output_channels = n_decoder_channels * mult / scale_factor
                 self.groups.append(
                     Rescaler(
-                        output_channels, scale_factor=SCALE_FACTOR, rescale_type=RescaleType.UP
+                        output_channels, scale_factor=scale_factor, rescale_type=RescaleType.UP
                     )
                 )
-                mult /= SCALE_FACTOR
+                mult /= scale_factor
         self.final_dec = GenerativeResidualCell(mult*n_decoder_channels)
         self.mult = mult
+
+    def build(self, input_shape):
+        self.batch_size = input_shape[0]
 
     def call(self, prior, enc_dec_combiners: List):
         z_params = []
         z0, params = self.sampler(prior, z_idx=0)
         z_params.append(params)
-        h = tf.stack([self.h]*z0.shape[0], axis=0)
+        h = tf.expand_dims(self.h, 0)
+        h = tf.tile(h, [tf.shape(z0)[0], 1, 1, 1])
         x = self.groups[0](h, z0)
         
         combine_idx = 0
@@ -73,8 +74,6 @@ class DecoderSampleCombiner(layers.Layer):
         self.conv = layers.Conv2D(output_channels, (1,1), strides=(1,1), padding="same")
     
     def call(self, x, z):
-        # z=8x4x4x2
-        # h=1x4x4x3
         output = tf.concat((x, z), axis=3)
         output = self.conv(output)
         return output

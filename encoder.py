@@ -1,6 +1,5 @@
 
 from common import RescaleType, Rescaler, SqueezeExcitation
-from config import SCALE_FACTOR
 from typing import List
 from tensorflow.keras import layers, Sequential, activations
 from functools import partial
@@ -25,6 +24,7 @@ class Encoder(layers.Layer):
         n_latent_scales: int,
         n_groups_per_scale: List[int],
         mult: int,
+        scale_factor: int,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -43,13 +43,13 @@ class Encoder(layers.Layer):
                     self.groups.append(EncoderDecoderCombiner(output_channels))
             # We downsample in the end of each scale except last
             if scale < n_latent_scales - 1:
-                output_channels = n_encoder_channels * mult * SCALE_FACTOR
+                output_channels = n_encoder_channels * mult * scale_factor
                 self.groups.append(
                     Rescaler(
-                        output_channels, scale_factor=SCALE_FACTOR, rescale_type=RescaleType.DOWN
+                        output_channels, scale_factor=scale_factor, rescale_type=RescaleType.DOWN
                     )
                 )
-                mult *= SCALE_FACTOR
+                mult *= scale_factor
         self.final_enc = Sequential(
             [
                 layers.ELU(),

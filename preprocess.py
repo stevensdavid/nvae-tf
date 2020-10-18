@@ -1,11 +1,10 @@
 from common import SqueezeExcitation
-from config import SCALE_FACTOR
 import tensorflow as tf
 from tensorflow.keras import activations, Sequential, layers
 
 
 class Preprocess(layers.Layer):
-    def __init__(self, n_encoder_channels, n_blocks, n_cells, mult=1, **kwargs) -> None:
+    def __init__(self, n_encoder_channels, n_blocks, n_cells, scale_factor, mult=1, **kwargs) -> None:
         super().__init__(**kwargs)
         self.pre_process = Sequential(
             layers.Conv2D(n_encoder_channels, (3, 3), padding="same")
@@ -16,9 +15,9 @@ class Preprocess(layers.Layer):
                 cell = BNSwishConv(2, n_channels, stride=(1, 1))
                 self.pre_process.add(cell)
             # Rescale channels on final cell
-            n_channels = mult * n_encoder_channels * SCALE_FACTOR
+            n_channels = mult * n_encoder_channels * scale_factor
             self.pre_process.add(BNSwishConv(2, n_channels, stride=(2, 2)))
-            mult *= SCALE_FACTOR
+            mult *= scale_factor
         self.mult = mult
 
     def call(self, input):
