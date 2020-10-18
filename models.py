@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from preprocess import Preprocess
 from tensorflow_probability import distributions
+import os
 
 
 def calculate_kl_loss(z_params: List[DistributionParams]):
@@ -21,13 +22,18 @@ def calculate_kl_loss(z_params: List[DistributionParams]):
     for g in z_params:
         enc_sigma = tf.math.exp(g.enc_log_sigma)
         dec_sigma = tf.math.exp(g.dec_log_sigma)
-        
+
         term1 = (g.dec_mu - g.enc_mu) / enc_sigma
         term2 = dec_sigma / enc_sigma
-        kl = 0.5 * (term1*term1 + term2*term2) - 0.5 - tf.math.log(term2)
-        kl_per_group.append(tf.math.reduce_sum(kl, axis=[1,2,3]))
+        kl = 0.5 * (term1 * term1 + term2 * term2) - 0.5 - tf.math.log(term2)
+        kl_per_group.append(tf.math.reduce_sum(kl, axis=[1, 2, 3]))
     loss = tf.math.reduce_sum(
-        tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
+        tf.convert_to_tensor(
+            kl_per_group,
+            dtype=tf.float32,
+            # dtype=tf.float16 if os.environ["MIXED_PRECISION"] else tf.float32,
+        ),
+        axis=[0],
     )
 
     return loss
@@ -35,9 +41,10 @@ def calculate_kl_loss(z_params: List[DistributionParams]):
 
 def calculate_recon_loss(inputs, reconstruction):
     log_probs = distributions.Bernoulli(
-        logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
+        logits=reconstruction,
+        allow_nan_stats=False,
     ).log_prob(inputs)
-    return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
+    return tf.cast(-tf.math.reduce_sum(log_probs, axis=[1, 2, 3]), tf.float32)
 
 
 def calculate_spectral_and_bn_loss(lambda_, encoder, decoder):
@@ -91,7 +98,6 @@ class NVAE(tf.keras.Model):
             mult=mult,
             scale_factor=scale_factor,
         )
-        # self.sampler = Sampler(n_latent_scales=n_latent_scales, n_groups_per_scale=n_groups_per_scale, n_latent_per_group=n_latent_per_group)
         mult = self.encoder.mult
         self.decoder = Decoder(
             n_decoder_channels=n_decoder_channels,
