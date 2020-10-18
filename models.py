@@ -12,6 +12,10 @@ from preprocess import Preprocess
 from tensorflow_probability import distributions
 
 
+def calculate_singular_value(w, iter=1):
+    
+    pass
+
 def calculate_kl_loss(z_params: List[DistributionParams]):
     # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma
     # -KL(q(z1|x)||p(z1)) - sum[ KL(q(zl|x,z<l) || p(z|z<l))]
@@ -40,13 +44,23 @@ def calculate_recon_loss(inputs, reconstruction):
     return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
 
 
-def calculate_spectral_and_bn_loss(lambda_, encoder, decoder):
+def calculate_spectral_and_bn_loss(lambda_, encoder, decoder, u):
     bn_loss = 0
     spectral_loss = 0
-    def update_loss(layer):
-        nonlocal spectral_loss, bn_loss
+    spectral_index = 0
+    def update_loss(layer,u):
+        nonlocal spectral_loss, bn_loss, spectral_index
         if isinstance(layer, layers.Conv2D):
-            spectral_loss += tf.math.reduce_max(layer.weights[0])
+            w = layer.weights[0]
+            v = tf.linalg.matmul(tf.transpose(w),u[spectral_index])
+            v_hat = v / tf.math.l2_normalize(v)
+            u_ = tf.linalg.matmul(w, v_hat)
+            u_hat = u_ / tf.math.l2_normalize(u)
+            sigma = tf.linalg.matmul(tf.linalg.matmul(tf.transpose(u_hat),w),v_hat)
+            w_spec = w / tf.linalg.matmul(sigma, w)
+            spectral_loss += tf.math.reduce_max(w_spec)
+            u[spectral_index] = u_hat
+            spectral_index += 1
         elif isinstance(layer, layers.BatchNormalization):
             bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights[0]))
         elif hasattr(layer, "layers"):
@@ -55,7 +69,7 @@ def calculate_spectral_and_bn_loss(lambda_, encoder, decoder):
 
     for model in [encoder, decoder]:
         for layer in model.groups:
-            update_loss(layer)
+            update_loss(layer,u)
     return lambda_ * spectral_loss, lambda_ * bn_loss
 
 
@@ -110,6 +124,12 @@ class NVAE(tf.keras.Model):
             mult=mult,
             n_channels_decoder=n_decoder_channels,
         )
+        self.u = []
+        for model in [self.encoder, self.decoder]:
+            for layer in model.groups:
+                if isinstance(layer, layers.Conv2D):
+                    shape = tf.shape(layer.weights[0])
+                    self.u.append(tf.Variable(tf.random_normal_initializer(shape), trainable=False))
 
     def call(self, inputs):
         x = self.preprocess(inputs)
@@ -141,7 +161,7 @@ class NVAE(tf.keras.Model):
             kl_loss = calculate_kl_loss(z_params)
             recon_loss = calculate_recon_loss(data, reconstruction)
             spectral_loss, bn_loss = calculate_spectral_and_bn_loss(
-                self.sr_lambda, self.encoder, self.decoder
+                self.sr_lambda, self.encoder, self.decoder, self.u
             )
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + spectral_loss + bn_loss
