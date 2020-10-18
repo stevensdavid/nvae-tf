@@ -1,3 +1,5 @@
+from common import DistributionParams
+from typing import List
 from tensorflow.python.keras.backend import update
 from tensorflow.python.keras.engine.sequential import Sequential
 from postprocess import Postprocess
@@ -10,21 +12,20 @@ from preprocess import Preprocess
 from tensorflow_probability import distributions
 
 
-def calculate_kl_loss(z_params):
+def calculate_kl_loss(z_params: List[DistributionParams]):
     # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma
     # -KL(q(z1|x)||p(z1)) - sum[ KL(q(zl|x,z<l) || p(z|z<l))]
     kl_per_group = []
-    # ---------TODO: Calculate first term of KL--------------
     # n_groups x batch_size x 4
-    for g in z_params[1:]:
+    loss = 0
+    for g in z_params:
         enc_sigma = tf.math.exp(g.enc_log_sigma)
         dec_sigma = tf.math.exp(g.dec_log_sigma)
-        # batch_size x H x W x C
-        kl = 0.5 * (
-            g.dec_mu ** 2 / enc_sigma ** 2 + dec_sigma ** 2 - g.dec_log_sigma ** 2 - 1
-        )
-        kl = tf.math.reduce_sum(kl, axis=[1, 2, 3])
-        kl_per_group.append(kl)
+        
+        term1 = (g.dec_mu - g.enc_mu) / enc_sigma
+        term2 = dec_sigma / enc_sigma
+        kl = 0.5 * (term1*term1 + term2*term2) - 0.5 - tf.math.log(term2)
+        kl_per_group.append(tf.math.reduce_sum(kl, axis=[1,2,3]))
     loss = tf.math.reduce_sum(
         tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
     )
