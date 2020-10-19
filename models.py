@@ -67,10 +67,11 @@ class NVAE(tf.keras.Model):
 
 
     def _initialize_u(self):
+        initializer = tf.random_normal_initializer()
         def add_u(layer):
             if isinstance(layer, layers.Conv2D):
                 shape = tf.shape(layer.weights[0])
-                self.u.append(tf.Variable(tf.random_normal_initializer(shape), trainable=False))
+                self.u.append(tf.Variable(initializer(shape), trainable=False))
             elif hasattr(layer, "layers"):
                 for inner_layer in layer.layers:
                     add_u(inner_layer)
