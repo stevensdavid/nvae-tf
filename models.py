@@ -74,7 +74,7 @@ class NVAE(tf.keras.Model):
         def add_u(layer):
             if isinstance(layer, layers.Conv2D):
                 shape = tf.shape(layer.weights[0])
-                self.u.append(tf.Variable(initializer(shape), trainable=False))
+                self.u.append(tf.Variable(initializer([shape[-1], 1]), trainable=False))
             elif hasattr(layer, "layers"):
                 for inner_layer in layer.layers:
                     add_u(inner_layer)
@@ -168,10 +168,11 @@ class NVAE(tf.keras.Model):
             nonlocal spectral_loss, bn_loss, spectral_index
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
+                w = tf.reshape(w, [-1, tf.shape(w)[-1]])
                 v = tf.linalg.matmul(w,self.u[spectral_index])
                 u_ = tf.linalg.matmul(tf.transpose(w), v)
                 sigma = tf.math.l2_normalize(v) / tf.math.l2_normalize(u_)
-                w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,v),tf.transpose(u))
+                w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,v),tf.transpose(u_))
                 spectral_loss += tf.math.reduce_max(w_spec)
                 self.u[spectral_index] = u_
                 spectral_index += 1
