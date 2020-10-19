@@ -64,6 +64,9 @@ class NVAE(tf.keras.Model):
             n_channels_decoder=n_decoder_channels,
         )
         self.u = []
+        # Updated at start of each epoch
+        self.epoch = None
+        self.total_epochs = None
 
 
     def _initialize_u(self):
@@ -110,7 +113,9 @@ class NVAE(tf.keras.Model):
             kl_loss = self.calculate_kl_loss(z_params)
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             spectral_loss, bn_loss = self.calculate_spectral_and_bn_loss()
-            loss = tf.math.reduce_mean(recon_loss + kl_loss)
+            # warming up KL term for first 30% of training
+            beta = min(self.epoch/0.3*self.total_epochs, 1)
+            loss = tf.math.reduce_mean(recon_loss + beta * kl_loss)
             total_loss = loss + spectral_loss + bn_loss
             # self.add_loss(loss+spectral_loss)
         gradients = tape.gradient(total_loss, self.trainable_weights)
@@ -141,6 +146,10 @@ class NVAE(tf.keras.Model):
         )
 
         return loss
+
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.epoch = epoch
 
 
     def calculate_recon_loss(self, inputs, reconstruction):
