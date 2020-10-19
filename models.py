@@ -161,8 +161,8 @@ class NVAE(tf.keras.Model):
                 w = layer.weights[0]
                 v = tf.linalg.matmul(w,self.u[spectral_index])
                 u_ = tf.linalg.matmul(tf.transpose(w), v)
-                sigma = tf.math.l2_normalize(u_) / tf.math.l2_normalize(v)
-                w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,u),tf.transpose(v))
+                sigma = tf.math.l2_normalize(v) / tf.math.l2_normalize(u_)
+                w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,v),tf.transpose(u))
                 spectral_loss += tf.math.reduce_max(w_spec)
                 self.u[spectral_index] = u_
                 spectral_index += 1
