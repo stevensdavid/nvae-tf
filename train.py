@@ -68,6 +68,7 @@ def main(args):
             )
         )
 
+    model.total_epochs = args.epochs
     model.fit(
         train_data,
         validation_data=test_data,
