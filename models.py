@@ -168,14 +168,12 @@ class NVAE(tf.keras.Model):
             nonlocal spectral_loss, bn_loss, spectral_index
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
-                v = tf.linalg.matmul(tf.transpose(w),self.u[spectral_index])
-                v_hat = v / tf.math.l2_normalize(v)
-                u_ = tf.linalg.matmul(w, v_hat)
-                u_hat = u_ / tf.math.l2_normalize(u_)
-                sigma = tf.linalg.matmul(tf.linalg.matmul(tf.transpose(u_hat),w),v_hat)
-                w_spec = w / tf.linalg.matmul(sigma, w)
+                v = tf.linalg.matmul(w,self.u[spectral_index])
+                u_ = tf.linalg.matmul(tf.transpose(w), v)
+                sigma = tf.math.l2_normalize(u_) / tf.math.l2_normalize(v)
+                w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,u),tf.transpose(v))
                 spectral_loss += tf.math.reduce_max(w_spec)
-                self.u[spectral_index] = u_hat
+                self.u[spectral_index] = u_
                 spectral_index += 1
             elif isinstance(layer, layers.BatchNormalization):
                 bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights[0]))
