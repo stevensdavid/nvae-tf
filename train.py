@@ -35,6 +35,7 @@ def main(args):
         model = tf.keras.models.load_model(
             os.path.join(args.model_save_dir, f"{args.resume_from}.tf")
         )
+        model.epoch = args.resume_from
     else:
         model = NVAE(
             n_encoder_channels=args.n_encoder_channels,
@@ -49,6 +50,7 @@ def main(args):
             n_groups_per_scale=args.n_groups_per_scale,
             sr_lambda=args.sr_lambda,
             scale_factor=args.scale_factor,
+            total_epochs=args.epochs,
         )
         model.compile(optimizer="adamax", run_eagerly=True)
     training_callbacks = [
@@ -68,7 +70,6 @@ def main(args):
             )
         )
 
-    model.total_epochs = args.epochs
     model.fit(
         train_data,
         validation_data=test_data,

@@ -28,6 +28,7 @@ class NVAE(tf.keras.Model):
         n_post_process_cells,
         sr_lambda,
         scale_factor,
+        total_epochs,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -65,25 +66,10 @@ class NVAE(tf.keras.Model):
         )
         self.u = []
         self.v = []
+        self.initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
         # Updated at start of each epoch
-        self.epoch = None
-        self.total_epochs = None
-
-
-    def _initialize_u(self, d0, d1, d2):
-        initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
-        def add_u(layer):
-            if isinstance(layer, layers.Conv2D):
-                shape = tf.shape(layer.weights[0])
-                self.u.append(tf.Variable(initializer([d0, d1]), trainable=False))
-                self.v.append(tf.Variable(initializer([d0, d2]), trainable=False))
-            elif hasattr(layer, "layers"):
-                for inner_layer in layer.layers:
-                    add_u(inner_layer)
-        
-        for model in [self.encoder, self.decoder]:
-            for layer in model.groups:
-                add_u(layer)
+        self.epoch = 0
+        self.total_epochs = total_epochs
 
     def call(self, inputs):
         x = self.preprocess(inputs)
@@ -112,12 +98,12 @@ class NVAE(tf.keras.Model):
             data = data[0]
         with tf.GradientTape() as tape:
             reconstruction, z_params = self(data)
-            kl_loss = self.calculate_kl_loss(z_params)
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             spectral_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             # warming up KL term for first 30% of training
-            beta = min(self.epoch/0.3*self.total_epochs, 1)
-            loss = tf.math.reduce_mean(recon_loss + beta * kl_loss)
+            beta = min(self.epoch / 0.3 * self.total_epochs, 1)
+            kl_loss = beta * self.calculate_kl_loss(z_params)
+            loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + spectral_loss + bn_loss
             # self.add_loss(loss+spectral_loss)
         gradients = tape.gradient(total_loss, self.trainable_weights)
@@ -138,21 +124,19 @@ class NVAE(tf.keras.Model):
         for g in z_params:
             enc_sigma = tf.math.exp(g.enc_log_sigma)
             dec_sigma = tf.math.exp(g.dec_log_sigma)
-            
+
             term1 = (g.dec_mu - g.enc_mu) / enc_sigma
             term2 = dec_sigma / enc_sigma
-            kl = 0.5 * (term1*term1 + term2*term2) - 0.5 - tf.math.log(term2)
-            kl_per_group.append(tf.math.reduce_sum(kl, axis=[1,2,3]))
+            kl = 0.5 * (term1 * term1 + term2 * term2) - 0.5 - tf.math.log(term2)
+            kl_per_group.append(tf.math.reduce_sum(kl, axis=[1, 2, 3]))
         loss = tf.math.reduce_sum(
             tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
         )
 
         return loss
 
-
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch = epoch
-
 
     def calculate_recon_loss(self, inputs, reconstruction):
         log_probs = distributions.Bernoulli(
@@ -164,32 +148,45 @@ class NVAE(tf.keras.Model):
         bn_loss = 0
         spectral_loss = 0
         spectral_index = 0
+
         def update_loss(layer):
             nonlocal spectral_loss, bn_loss, spectral_index
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
                 w = tf.reshape(w, [tf.shape(w)[0], -1])
-                w = tf.stack([w], axis=0)
-                if not self.u:
-                    d0, d1, d2 = tf.shape(w)
-                    self._initialize_u(d0, d1, d2)
+                if spectral_index == len(self.u):
+                    d1, d2 = tf.shape(w)
+                    self.u.append(
+                        tf.Variable(self.initializer([1, d1]), trainable=False)
+                    )
+                    self.v.append(
+                        tf.Variable(self.initializer([1, d2]), trainable=False)
+                    )
                 self.v[spectral_index] = tf.math.l2_normalize(
-                    tf.squeeze(tf.linalg.matmul(tf.expand_dims(self.u[spectral_index], axis=1), w), [1]),
-                axis=1, epsilon=1e-3)
+                    tf.squeeze(
+                        tf.linalg.matmul(
+                            tf.expand_dims(self.u[spectral_index], axis=1), w
+                        ),
+                        [1],
+                    ),
+                    axis=1,
+                    epsilon=1e-3,
+                )
                 self.u[spectral_index] = tf.math.l2_normalize(
-                    tf.squeeze(tf.linalg.matmul(w, tf.expand_dims(self.v[spectral_index], axis=2)),[2]),
-                axis=1, epsilon=1e-3)
+                    tf.squeeze(
+                        tf.linalg.matmul(
+                            w, tf.expand_dims(self.v[spectral_index], axis=2)
+                        ),
+                        [2],
+                    ),
+                    axis=1,
+                    epsilon=1e-3,
+                )
                 sigma = tf.linalg.matmul(
                     tf.expand_dims(self.u[spectral_index], axis=1),
-                    tf.linalg.matmul(w, tf.expand_dims(self.v[spectral_index], axis=2))
+                    tf.linalg.matmul(w, tf.expand_dims(self.v[spectral_index], axis=2)),
                 )
-                spectral_index += tf.math.reduce_sum(sigma)
-                # v = tf.linalg.matmul(w,self.u[spectral_index])
-                # u_ = tf.linalg.matmul(tf.transpose(w), v)
-                # sigma = tf.math.l2_normalize(v) / tf.math.l2_normalize(u_)
-                # w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,v),tf.transpose(u_))
-                # spectral_loss += tf.math.reduce_max(w_spec)
-                # self.u[spectral_index] = u_
+                spectral_loss += tf.math.reduce_sum(sigma)
                 spectral_index += 1
             elif isinstance(layer, layers.BatchNormalization):
                 bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights[0]))
