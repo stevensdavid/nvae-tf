@@ -169,7 +169,7 @@ class NVAE(tf.keras.Model):
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
                 w = tf.reshape(w, [tf.shape(w)[0], -1])
-                w = tf.stack(w, axis=0)
+                w = tf.stack([w], axis=0)
                 if not self.u:
                     d0, d1, d2 = tf.shape(w)
                     self._initialize_u(d0, d1, d2)
