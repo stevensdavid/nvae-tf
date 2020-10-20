@@ -64,17 +64,19 @@ class NVAE(tf.keras.Model):
             n_channels_decoder=n_decoder_channels,
         )
         self.u = []
+        self.v = []
         # Updated at start of each epoch
         self.epoch = None
         self.total_epochs = None
 
 
-    def _initialize_u(self):
-        initializer = tf.random_normal_initializer()
+    def _initialize_u(self, d0, d1, d2):
+        initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
         def add_u(layer):
             if isinstance(layer, layers.Conv2D):
                 shape = tf.shape(layer.weights[0])
-                self.u.append(tf.Variable(initializer([shape[-1], 1]), trainable=False))
+                self.u.append(tf.Variable(initializer([d0, d1]), trainable=False))
+                self.v.append(tf.Variable(initializer([d0, d2]), trainable=False))
             elif hasattr(layer, "layers"):
                 for inner_layer in layer.layers:
                     add_u(inner_layer)
@@ -159,8 +161,6 @@ class NVAE(tf.keras.Model):
         return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
 
     def calculate_spectral_and_bn_loss(self):
-        if not self.u:
-            self._initialize_u()
         bn_loss = 0
         spectral_loss = 0
         spectral_index = 0
@@ -168,13 +168,28 @@ class NVAE(tf.keras.Model):
             nonlocal spectral_loss, bn_loss, spectral_index
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
-                w = tf.reshape(w, [-1, tf.shape(w)[-1]])
-                v = tf.linalg.matmul(w,self.u[spectral_index])
-                u_ = tf.linalg.matmul(tf.transpose(w), v)
-                sigma = tf.math.l2_normalize(v) / tf.math.l2_normalize(u_)
-                w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,v),tf.transpose(u_))
-                spectral_loss += tf.math.reduce_max(w_spec)
-                self.u[spectral_index] = u_
+                w = tf.reshape(w, [tf.shape(w)[0], -1])
+                w = tf.stack(w, axis=0)
+                if not self.u:
+                    d0, d1, d2 = tf.shape(w)
+                    self._initialize_u(d0, d1, d2)
+                self.v[spectral_index] = tf.math.l2_normalize(
+                    tf.squeeze(tf.linalg.matmul(tf.expand_dims(self.u[spectral_index], axis=1), w), [1]),
+                axis=1, epsilon=1e-3)
+                self.u[spectral_index] = tf.math.l2_normalize(
+                    tf.squeeze(tf.linalg.matmul(w, tf.expand_dims(self.v[spectral_index], axis=2)),[2]),
+                axis=1, epsilon=1e-3)
+                sigma = tf.linalg.matmul(
+                    tf.expand_dims(self.u[spectral_index], axis=1),
+                    tf.linalg.matmul(w, tf.expand_dims(self.v[spectral_index], axis=2))
+                )
+                spectral_index += tf.math.reduce_sum(sigma)
+                # v = tf.linalg.matmul(w,self.u[spectral_index])
+                # u_ = tf.linalg.matmul(tf.transpose(w), v)
+                # sigma = tf.math.l2_normalize(v) / tf.math.l2_normalize(u_)
+                # w_spec = tf.linalg.matmul(tf.linalg.matmul(sigma,v),tf.transpose(u_))
+                # spectral_loss += tf.math.reduce_max(w_spec)
+                # self.u[spectral_index] = u_
                 spectral_index += 1
             elif isinstance(layer, layers.BatchNormalization):
                 bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights[0]))
