@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentError, ArgumentParser
 import os
 import tensorflow as tf
 from tensorflow.keras import callbacks
@@ -27,9 +27,12 @@ def main(args):
     np.random.seed(args.seed)
     # Imported here so seed can be set before imports
     from models import NVAE
-    from datasets import load_mnist
 
-    train_data, test_data = load_mnist(batch_size=args.batch_size)
+    if args.dataset == "mnist":
+        from datasets import load_mnist
+        train_data, test_data = load_mnist(batch_size=args.batch_size)
+    else:
+        raise ArgumentError("Unsupported dataset")
 
     if args.resume_from > 0:
         model = tf.keras.models.load_model(
@@ -52,7 +55,9 @@ def main(args):
             scale_factor=args.scale_factor,
             total_epochs=args.epochs,
         )
-        model.compile(optimizer="adamax", run_eagerly=True)
+        lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.01, decay_steps=args.epochs//args.batch_size)
+        optimizer = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
+        model.compile(optimizer=optimizer, run_eagerly=True)
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}.tf"),
