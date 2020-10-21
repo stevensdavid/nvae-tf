@@ -67,6 +67,7 @@ class NVAE(tf.keras.Model):
             mult=mult,
             n_channels_decoder=n_decoder_channels,
         )
+        # lists wrapped to avoid checkpointing
         self.u = []
         self.v = []
         self.initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
@@ -106,7 +107,8 @@ class NVAE(tf.keras.Model):
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             spectral_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             # warming up KL term for first 30% of training
-            beta = min(self.epoch / 0.3 * self.total_epochs, 1)
+            # beta = min(self.epoch / 0.3 * self.total_epochs, 1)
+            beta = 0.9
             activate_balancing = (beta < 1)
             kl_loss = beta * self.calculate_kl_loss(z_params,activate_balancing)
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
