@@ -1,17 +1,14 @@
 from common import DistributionParams
 from typing import List
-from tensorflow.python.keras.backend import update
-from tensorflow.python.keras.engine.sequential import Sequential
 from postprocess import Postprocess
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale
+# from tensorflow.python.training.tracking.data_structures import NonDependency
 from decoder import Decoder
 from encoder import Encoder
 import tensorflow as tf
 from tensorflow.keras import layers
 from preprocess import Preprocess
 from tensorflow_probability import distributions
-import os
-
+import numpy as np
 
 class NVAE(tf.keras.Model):
     def __init__(
@@ -37,6 +34,11 @@ class NVAE(tf.keras.Model):
         self.preprocess = Preprocess(
             n_encoder_channels, n_preprocess_blocks, n_preprocess_cells, scale_factor
         )
+        
+        self.n_latent_scales = n_latent_scales
+        self.n_groups_per_scale = n_groups_per_scale
+        self.n_total_iterations = n_total_iterations
+
         mult = self.preprocess.mult
         self.encoder = Encoder(
             n_encoder_channels=n_encoder_channels,
@@ -65,6 +67,7 @@ class NVAE(tf.keras.Model):
             mult=mult,
             n_channels_decoder=n_decoder_channels,
         )
+        # lists wrapped to avoid checkpointing
         self.u = []
         self.v = []
         self.initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
@@ -104,7 +107,8 @@ class NVAE(tf.keras.Model):
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             spectral_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             # warming up KL term for first 30% of training
-            beta = min(self.epoch / 0.3 * self.total_epochs, 1)
+            # beta = min(self.epoch / 0.3 * self.total_epochs, 1)
+            beta = 0.9
             activate_balancing = (beta < 1)
             kl_loss = beta * self.calculate_kl_loss(z_params,activate_balancing)
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
@@ -127,8 +131,6 @@ class NVAE(tf.keras.Model):
         # n_groups x batch_size x 4
         loss = 0
 
-		
-
         for g in z_params:
             enc_sigma = tf.math.exp(g.enc_log_sigma)
             dec_sigma = tf.math.exp(g.dec_log_sigma)
@@ -137,38 +139,40 @@ class NVAE(tf.keras.Model):
             term2 = dec_sigma / enc_sigma
             kl = 0.5 * (term1 * term1 + term2 * term2) - 0.5 - tf.math.log(term2)
             kl_per_group.append(tf.math.reduce_sum(kl, axis=[1, 2, 3]))
-        loss = tf.math.reduce_sum(
-            tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
-        )
+        
 		# balance kl
-		if balancing:
-            kl_alphas = calculate_kl_alphas(self.encoder.n_latent_scales,self.encoder.n_groups_per_scale)
-			kl_coeffs = calculate_kl_coeff(0.0001)
-            kl_all = tf.stack(kl_per_group, 1)
-            kl_vals = tf.reduce_mean(kl_all,dim=0)
-            kl_coeff_i = tf_reduce_mean(tf.math.abs(kl_all),dim=0) + 0.01
+        if balancing:
+            #Requires different treatment for encoder and decoder?
+            kl_alphas = self.calculate_kl_alphas(self.n_latent_scales,self.n_groups_per_scale)
+            kl_coeffs = self.calculate_kl_coeff(0.0001)
+            kl_all = tf.stack(kl_per_group, 0)
+            kl_vals = tf.reduce_mean(kl_all,1)
+            kl_coeff_i = tf.reduce_mean(tf.math.abs(kl_all),1) + 0.01
             total_kl = tf.reduce_sum(kl_coeff_i)
             kl_coeff_i = kl_coeff_i / kl_alphas * total_kl
-            kl_coeff_i = kl_coeff_i / tf.reduce_mean(kl_coeff_i,1)
-            kl = tf.reduce_sum(kl_all*kl_coeff_i,1)
-            return kl
+            kl_coeff_i = kl_coeff_i / tf.reduce_mean(kl_coeff_i, 0, keepdims=True)
+            temp = tf.stack(kl_all,1)
+            loss = tf.reduce_sum(temp*kl_coeff_i,axis=[1])
         else:
-        	return loss
+            loss = tf.math.reduce_sum(
+            tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
+        	)
+        return loss
 	
     # Calculates the balancer coefficients alphas. The coefficient decay for later groups,
     # for which original paper offer several functions. Here, a square function is used.
-	def calculate_kl_alphas(self, num_scales, groups_per_scale):
+    def calculate_kl_alphas(self, num_scales, groups_per_scale):
         coeffs = []
         for i in range(num_scales):
-			coeffs.append(np.square(2**i)/groups_per_scale[num_scales-i-1] * tf.ones([groups_per_scale[num_scales-i-1]],tf.float32))
-		coeffs = tf.concat(coeffs, 0)
+            coeffs.append(np.square(2**i)/groups_per_scale[num_scales-i-1] * tf.ones([groups_per_scale[num_scales-i-1]],tf.float32))
+        coeffs = tf.concat(coeffs, 0)
         coeffs /= tf.reduce_min(coeffs)
         return coeffs
-
-	def calculate_kl_coeff(min_kl_coeff):
+        
+    def calculate_kl_coeff(self,min_kl_coeff):
         #TODO: add as arg
         kl_const_portion = 0.0001
-		warmup_iters = 0.3*self.n_total_iterations
+        warmup_iters = 0.3*self.n_total_iterations
         const_iters = kl_const_portion*self.n_total_iterations
         return max(min((self.steps - const_iters)/warmup_iters,1.0),min_kl_coeff)
 
@@ -187,33 +191,36 @@ class NVAE(tf.keras.Model):
         spectral_loss = 0
         spectral_index = 0
 
+        u = [t for t in self.u]
+        v = [t for t in self.v]
+
         def update_loss(layer):
-            nonlocal spectral_loss, bn_loss, spectral_index
+            nonlocal spectral_loss, bn_loss, spectral_index, u, v
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
                 w = tf.reshape(w, [tf.shape(w)[0], -1])
-                if spectral_index == len(self.u):
+                if spectral_index == len(u):
                     d1, d2 = tf.shape(w)
-                    self.u.append(
+                    u.append(
                         tf.Variable(self.initializer([1, d1]), trainable=False)
                     )
-                    self.v.append(
+                    v.append(
                         tf.Variable(self.initializer([1, d2]), trainable=False)
                     )
-                self.v[spectral_index] = tf.math.l2_normalize(
+                v[spectral_index] = tf.math.l2_normalize(
                     tf.squeeze(
                         tf.linalg.matmul(
-                            tf.expand_dims(self.u[spectral_index], axis=1), w
+                            tf.expand_dims(u[spectral_index], axis=1), w
                         ),
                         [1],
                     ),
                     axis=1,
                     epsilon=1e-3,
                 )
-                self.u[spectral_index] = tf.math.l2_normalize(
+                u[spectral_index] = tf.math.l2_normalize(
                     tf.squeeze(
                         tf.linalg.matmul(
-                            w, tf.expand_dims(self.v[spectral_index], axis=2)
+                            w, tf.expand_dims(v[spectral_index], axis=2)
                         ),
                         [2],
                     ),
@@ -221,8 +228,8 @@ class NVAE(tf.keras.Model):
                     epsilon=1e-3,
                 )
                 sigma = tf.linalg.matmul(
-                    tf.expand_dims(self.u[spectral_index], axis=1),
-                    tf.linalg.matmul(w, tf.expand_dims(self.v[spectral_index], axis=2)),
+                    tf.expand_dims(u[spectral_index], axis=1),
+                    tf.linalg.matmul(w, tf.expand_dims(v[spectral_index], axis=2)),
                 )
                 spectral_loss += tf.math.reduce_sum(sigma)
                 spectral_index += 1
@@ -235,4 +242,6 @@ class NVAE(tf.keras.Model):
         for model in [self.encoder, self.decoder]:
             for layer in model.groups:
                 update_loss(layer)
+        self.u = u
+        self.v = v
         return self.sr_lambda * spectral_loss, self.sr_lambda * bn_loss
