@@ -54,12 +54,12 @@ class PostprocessNode(tf.keras.Model):
         self.sequence = Sequential()
         if upscale:
             self.sequence.add(Rescaler(n_channels, scale_factor, rescale_type=RescaleType.UP))
-        self.sequence.add(layers.BatchNormalization())
+        self.sequence.add(layers.BatchNormalization(momentum=.05))
         hidden_dim = n_channels * expansion_ratio
         self.sequence.add(ConvBNSwish(hidden_dim, kernel_size=(1,1), stride=(1,1)))
         self.sequence.add(ConvBNSwish(hidden_dim, kernel_size=(5,5), stride=(1,1))) #, groups=int(hidden_dim)))
         self.sequence.add(layers.Conv2D(n_channels, kernel_size=(1,1), strides=(1,1), use_bias=False))
-        self.sequence.add(layers.BatchNormalization())
+        self.sequence.add(layers.BatchNormalization(momentum=.05))
         self.sequence.add(SqueezeExcitation())
 
     def call(self, inputs):
@@ -71,7 +71,7 @@ class ConvBNSwish(tf.keras.Model):
         super().__init__(**kwargs)
         self.sequence = Sequential()
         self.sequence.add(layers.Conv2D(n_channels, kernel_size=kernel_size, strides=stride, groups=groups, use_bias=False, padding="same"))
-        self.sequence.add(layers.BatchNormalization())
+        self.sequence.add(layers.BatchNormalization(momentum=.05))
         self.sequence.add(layers.Activation(activations.swish))
 
     def call(self, inputs):

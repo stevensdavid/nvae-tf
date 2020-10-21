@@ -127,7 +127,7 @@ class SqueezeExcitation(tf.keras.Model):
 class Rescaler(tf.keras.Model):
     def __init__(self, n_channels, scale_factor, rescale_type, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.bn = layers.BatchNormalization()
+        self.bn = layers.BatchNormalization(momentum=.05)
         self.mode = rescale_type
         self.factor = scale_factor
         if rescale_type == RescaleType.UP:
