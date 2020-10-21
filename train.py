@@ -34,6 +34,7 @@ def main(args):
     else:
         raise ArgumentError("Unsupported dataset")
 
+    batches_per_epoch = len(train_data) // args.batch_size
     if args.resume_from > 0:
         model = tf.keras.models.load_model(
             os.path.join(args.model_save_dir, f"{args.resume_from}.tf")
@@ -56,13 +57,14 @@ def main(args):
             total_epochs=args.epochs,
             n_total_iterations=len(train_data)*args.epochs#for balance kl
         )
-        lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.01, decay_steps=args.epochs//args.batch_size)
-        optimizer = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
-        model.compile(optimizer=optimizer, run_eagerly=True)
+        # 
+        # lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.01, decay_steps=args.epochs * batches_per_epoch)
+        # optimizer = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
+        model.compile(optimizer="adamax", run_eagerly=True)
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}.tf"),
-            save_freq=args.model_save_frequency,
+            save_freq=args.model_save_frequency * batches_per_epoch,
         )
     ]
     if args.patience:
