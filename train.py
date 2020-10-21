@@ -57,10 +57,9 @@ def main(args):
             total_epochs=args.epochs,
             n_total_iterations=len(train_data)*args.epochs#for balance kl
         )
-        # 
-        # lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.01, decay_steps=args.epochs * batches_per_epoch)
-        # optimizer = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
-        model.compile(optimizer="adamax", run_eagerly=True)
+        lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch)
+        adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
+        model.compile(optimizer=adamax, run_eagerly=True)
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}.tf"),
