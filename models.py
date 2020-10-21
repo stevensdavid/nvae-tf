@@ -140,7 +140,7 @@ class NVAE(tf.keras.Model):
         loss = tf.math.reduce_sum(
             tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
         )
-
+		# balance kl
 		if balancing:
             kl_alphas = calculate_kl_alphas(self.encoder.n_latent_scales,self.encoder.n_groups_per_scale)
 			kl_coeffs = calculate_kl_coeff(0.0001)

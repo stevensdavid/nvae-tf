@@ -54,7 +54,7 @@ def main(args):
             sr_lambda=args.sr_lambda,
             scale_factor=args.scale_factor,
             total_epochs=args.epochs,
-            n_total_iterations=len(train_data)*args.epochs
+            n_total_iterations=len(train_data)*args.epochs#for balance kl
         )
         lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.01, decay_steps=args.epochs//args.batch_size)
         optimizer = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
