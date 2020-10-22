@@ -30,10 +30,12 @@ def main(args):
 
     if args.dataset == "mnist":
         from datasets import load_mnist
+
         train_data, test_data = load_mnist(batch_size=args.batch_size)
     else:
         raise ArgumentError("Unsupported dataset")
-
+    if args.debug:
+        train_data = train_data.take(2)  # DEBUG OPTION
     batches_per_epoch = len(train_data) // args.batch_size
     if args.resume_from > 0:
         model = tf.keras.models.load_model(
@@ -55,16 +57,20 @@ def main(args):
             sr_lambda=args.sr_lambda,
             scale_factor=args.scale_factor,
             total_epochs=args.epochs,
-            n_total_iterations=len(train_data)*args.epochs#for balance kl
+            n_total_iterations=len(train_data) * args.epochs,  # for balance kl
         )
-        lr_schedule = tf.keras.experimental.CosineDecay(initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch)
+        lr_schedule = tf.keras.experimental.CosineDecay(
+            initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch
+        )
         adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
         model.compile(optimizer=adamax, run_eagerly=True)
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}.tf"),
             save_freq=args.model_save_frequency * batches_per_epoch,
-        )
+            save_best_only=True,
+        ),
+        callbacks.LambdaCallback(on_epoch_begin=model.on_epoch_begin),
     ]
     if args.patience:
         training_callbacks.append(
@@ -93,7 +99,7 @@ def parse_args():
     parser.add_argument(
         "--epochs", type=int, default=400, help="Number of epochs to train"
     )
-    parser.add_argument("--batch_size", default=64, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
     # Hyperparameters
     parser.add_argument(
         "--n_encoder_channels",
@@ -169,13 +175,22 @@ def parse_args():
     # Miscellaneous
     parser.add_argument("--cpu", action="store_true", help="Enforce CPU training")
     parser.add_argument(
-        "--model_save_dir", type=str, help="Directory to save models in"
+        "--debug", action="store_true", help="Use only first two batches of data"
+    )
+    parser.add_argument(
+        "--model_save_dir",
+        type=str,
+        default="models",
+        help="Directory to save models in",
     )
     parser.add_argument(
         "--resume_from", type=int, default=0, help="Epoch to resume training from"
     )
     parser.add_argument(
-        "--tensorboard_log_dir", type=str, help="Directory to save Tensorboard logs in"
+        "--tensorboard_log_dir",
+        type=str,
+        default="logs",
+        help="Directory to save Tensorboard logs in",
     )
     parser.add_argument(
         "--log_frequency",
