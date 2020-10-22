@@ -66,7 +66,7 @@ class BNSwishConv(tf.keras.Model):
             # We have to rescale the input in order to combine it
             self.skip = SkipScaler(n_channels)
         for i in range(n_nodes):
-            self.nodes.add(layers.BatchNormalization(momentum=.05))
+            self.nodes.add(layers.BatchNormalization(momentum=0.05))
             self.nodes.add(layers.Activation(activations.swish))
             #
             self.nodes.add(

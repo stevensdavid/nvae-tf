@@ -94,15 +94,15 @@ class GenerativeResidualCell(tf.keras.Model):
 
     def __init__(self, output_channels, expansion_ratio=6, **kwargs):
         super().__init__(**kwargs)
-        self.batch_norm1 = layers.BatchNormalization()
+        self.batch_norm1 = layers.BatchNormalization(momentum=.05)
         self.conv1 = layers.Conv2D(
             expansion_ratio * output_channels, (1, 1), padding="same"
         )
-        self.batch_norm2 = layers.BatchNormalization()
+        self.batch_norm2 = layers.BatchNormalization(momentum=.05)
         self.depth_conv = layers.DepthwiseConv2D((5, 5), padding="same")
-        self.batch_norm3 = layers.BatchNormalization()
+        self.batch_norm3 = layers.BatchNormalization(momentum=.05)
         self.conv2 = layers.Conv2D(output_channels, (1, 1), padding="same")
-        self.batch_norm4 = layers.BatchNormalization()
+        self.batch_norm4 = layers.BatchNormalization(momentum=.05)
         self.se = SqueezeExcitation()
 
     def call(self, inputs):
