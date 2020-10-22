@@ -117,7 +117,7 @@ class NVAE(tf.keras.Model):
             beta = min(self.epoch / (0.3 * self.total_epochs), 1)
             activate_balancing = beta < 1
             kl_loss = beta * self.calculate_kl_loss(z_params, activate_balancing)
-            # loss = tf.math.reduce_mean(recon_loss + kl_loss)
+            loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + spectral_loss + bn_loss
             # self.add_loss(loss+spectral_loss)
         gradients = tape.gradient(total_loss, self.trainable_weights)
