@@ -67,8 +67,7 @@ def main(args):
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}.tf"),
-            save_freq=args.model_save_frequency * batches_per_epoch,
-            save_best_only=True,
+            save_best_only=True, monitor="loss"
         ),
         callbacks.LambdaCallback(on_epoch_begin=model.on_epoch_begin),
     ]
@@ -85,8 +84,8 @@ def main(args):
 
     model.fit(
         train_data,
-        validation_data=test_data,
-        validation_freq=args.log_frequency,
+        # validation_data=test_data,
+        # validation_freq=args.log_frequency,
         epochs=args.epochs,
         callbacks=training_callbacks,
         initial_epoch=args.resume_from,
