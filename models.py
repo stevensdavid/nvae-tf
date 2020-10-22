@@ -1,10 +1,10 @@
 import os
-from common import DistributionParams
+from common import DistributionParams, Rescaler
 from typing import List
 from postprocess import Postprocess
 
 # from tensorflow.python.training.tracking.data_structures import NonDependency
-from decoder import Decoder
+from decoder import Decoder, DecoderSampleCombiner
 from encoder import Encoder
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -12,6 +12,8 @@ from preprocess import Preprocess
 from tensorflow_probability import distributions
 import numpy as np
 
+def softclamp5(x):
+    return 5. * tf.math.tanh(x / 5.) #differentiable clamp [-5, 5]
 
 class NVAE(tf.keras.Model):
     def __init__(
@@ -37,10 +39,11 @@ class NVAE(tf.keras.Model):
         self.preprocess = Preprocess(
             n_encoder_channels, n_preprocess_blocks, n_preprocess_cells, scale_factor
         )
-
+        self.n_latent_per_group = n_latent_per_group
         self.n_latent_scales = n_latent_scales
         self.n_groups_per_scale = n_groups_per_scale
         self.n_total_iterations = n_total_iterations
+        self.n_preprocess_blocks = n_preprocess_blocks
 
         mult = self.preprocess.mult
         self.encoder = Encoder(
@@ -83,6 +86,7 @@ class NVAE(tf.keras.Model):
     def call(self, inputs):
         x = self.preprocess(inputs)
         enc_dec_combiners, final_x = self.encoder(x)
+        self.final_x = final_x
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
         reconstruction, z_params = self.decoder(final_x, enc_dec_combiners)
@@ -125,6 +129,42 @@ class NVAE(tf.keras.Model):
             "kl_loss": kl_loss,
             "spectral_loss": spectral_loss,
         }
+
+    def sample(self, image_size, n_samples=16, temperature=1.):
+        scale_index = 0
+        scaling = 2 ** (self.n_preprocess_blocks + self.n_latent_scales -1)
+        z0_size = [n_samples, self.n_latent_per_group, image_size//scaling, image_size//scaling]
+        mu = softclamp5(tf.zeros(z0_size))
+        log_sigma = softclamp5(tf.zeros(z0_size))
+        sigma = tf.math.exp(log_sigma) + 1e-2
+        if temperature != 1.:
+            self.sigma *= temperature
+        z = self.decoder.sampler.sample(mu, sigma)
+        s = tf.expand_dims(self.final_x, axis=0)
+        decoder_index = 0
+        for layer in self.decoder.groups:
+            if isinstance(layer, DecoderSampleCombiner):
+                if decoder_index > 0:
+                    mu, log_sigma = self.decoder.sampler.get_params(self.decoder.sampler.dec_sampler, decoder_index, s)
+                    mu = softclamp5(mu)
+                    log_sigma = softclamp5(log_sigma)
+                    sigma = tf.math.exp(log_sigma) + 1e-2
+                    z = self.decoder.sampler.sample(mu, sigma)
+                s = layer(s, z)
+                decoder_index += 1
+            else: 
+                s = layer(s)
+                if isinstance(layer, Rescaler):
+                    scale_index += 1
+            
+        reconstruction = self.postprocess(s)
+
+        distribution = distributions.Bernoulli(
+                logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
+            )
+        images = tf.math.reduce_mean(distribution.sample(), axis=0)
+        
+        return images
 
     def calculate_kl_loss(self, z_params: List[DistributionParams], balancing):
         # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma
