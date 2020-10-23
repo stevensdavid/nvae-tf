@@ -4,6 +4,7 @@ from enum import Enum, auto
 import tensorflow as tf
 
 from tensorflow.keras import layers, activations, Sequential
+from tensorflow_addons.layers import SpectralNormalization
 from dataclasses import dataclass
 
 
@@ -36,10 +37,12 @@ class Sampler(tf.keras.Model):
             for group in range(n_groups):
                 self.enc_sampler.append(
                     # NVLabs use padding 1 here?
-                    layers.Conv2D(
-                        scale_factor * self.n_latent_per_group,
-                        kernel_size=(3, 3),
-                        padding="same",
+                    SpectralNormalization(
+                        layers.Conv2D(
+                            scale_factor * self.n_latent_per_group,
+                            kernel_size=(3, 3),
+                            padding="same",
+                        )
                     )
                 )
                 if scale == 0 and group == 0:
@@ -50,8 +53,11 @@ class Sampler(tf.keras.Model):
                     sampler.add(layers.ELU())
                     # NVLabs use padding 0 here?
                     sampler.add(
-                        layers.Conv2D(
-                            scale_factor * self.n_latent_per_group, kernel_size=(1, 1)
+                        SpectralNormalization(
+                            layers.Conv2D(
+                                scale_factor * self.n_latent_per_group,
+                                kernel_size=(1, 1),
+                            )
                         )
                     )
                     self.dec_sampler.append(sampler)
@@ -127,16 +133,21 @@ class SqueezeExcitation(tf.keras.Model):
 class Rescaler(tf.keras.Model):
     def __init__(self, n_channels, scale_factor, rescale_type, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.bn = layers.BatchNormalization(momentum=.05)
+        self.bn = layers.BatchNormalization(momentum=0.05)
         self.mode = rescale_type
         self.factor = scale_factor
         if rescale_type == RescaleType.UP:
-            self.conv = layers.Conv2D(
-                n_channels, (3, 3), strides=(1, 1), padding="same"
+            self.conv = SpectralNormalization(
+                layers.Conv2D(n_channels, (3, 3), strides=(1, 1), padding="same")
             )
         elif rescale_type == RescaleType.DOWN:
-            self.conv = layers.Conv2D(
-                n_channels, (3, 3), strides=(self.factor, self.factor), padding="same"
+            self.conv = SpectralNormalization(
+                layers.Conv2D(
+                    n_channels,
+                    (3, 3),
+                    strides=(self.factor, self.factor),
+                    padding="same",
+                )
             )
 
     def call(self, input):
