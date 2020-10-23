@@ -23,6 +23,7 @@ class Postprocess(tf.keras.Model):
                         scale_factor=scale_factor,
                     )
                 )
+        self.sequence.add(layers.Activation(activations.elu))
         self.sequence.add(layers.Conv2D(1, kernel_size=(3, 3), padding="same"))
         self.mult = mult
 
