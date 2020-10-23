@@ -58,7 +58,7 @@ class Sampler(tf.keras.Model):
 
     def sample(self, mu, log_sigma):
         # reparametrization trick
-        z = mu + tf.random.normal(shape=tf.shape(mu), dtype=tf.float16 if os.environ["MIXED_PRECISION"] else tf.float32) * log_sigma
+        z = mu + tf.random.normal(shape=tf.shape(mu), dtype=tf.float32) * log_sigma
         return z
 
     def get_params(self, sampler, z_idx, prior):

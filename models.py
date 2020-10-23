@@ -1,4 +1,3 @@
-import os
 from common import DistributionParams, Rescaler
 from typing import List
 from postprocess import Postprocess
@@ -12,8 +11,10 @@ from preprocess import Preprocess
 from tensorflow_probability import distributions
 import numpy as np
 
+
 def softclamp5(x):
-    return 5. * tf.math.tanh(x / 5.) #differentiable clamp [-5, 5]
+    return 5.0 * tf.math.tanh(x / 5.0)  # differentiable clamp [-5, 5]
+
 
 class NVAE(tf.keras.Model):
     def __init__(
@@ -130,40 +131,47 @@ class NVAE(tf.keras.Model):
             "spectral_loss": spectral_loss,
         }
 
-    def sample(self, image_size, n_samples=16, temperature=1.):
+    def sample(self, image_size, n_samples=16, temperature=1.0):
         scale_index = 0
-        scaling = 2 ** (self.n_preprocess_blocks + self.n_latent_scales -1)
-        z0_size = [n_samples, self.n_latent_per_group, image_size//scaling, image_size//scaling]
+        scaling = 2 ** (self.n_preprocess_blocks + self.n_latent_scales - 1)
+        z0_size = [
+            n_samples,
+            self.n_latent_per_group,
+            image_size // scaling,
+            image_size // scaling,
+        ]
         mu = softclamp5(tf.zeros(z0_size))
         log_sigma = softclamp5(tf.zeros(z0_size))
         sigma = tf.math.exp(log_sigma) + 1e-2
-        if temperature != 1.:
+        if temperature != 1.0:
             self.sigma *= temperature
         z = self.decoder.sampler.sample(mu, sigma)
-        s = tf.expand_dims(self.final_x, axis=0)
+        s = tf.expand_dims(self.decoder.h, axis=0)
         decoder_index = 0
         for layer in self.decoder.groups:
             if isinstance(layer, DecoderSampleCombiner):
                 if decoder_index > 0:
-                    mu, log_sigma = self.decoder.sampler.get_params(self.decoder.sampler.dec_sampler, decoder_index, s)
+                    mu, log_sigma = self.decoder.sampler.get_params(
+                        self.decoder.sampler.dec_sampler, decoder_index, s
+                    )
                     mu = softclamp5(mu)
                     log_sigma = softclamp5(log_sigma)
                     sigma = tf.math.exp(log_sigma) + 1e-2
                     z = self.decoder.sampler.sample(mu, sigma)
                 s = layer(s, z)
                 decoder_index += 1
-            else: 
+            else:
                 s = layer(s)
                 if isinstance(layer, Rescaler):
                     scale_index += 1
-            
+
         reconstruction = self.postprocess(s)
 
         distribution = distributions.Bernoulli(
-                logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
-            )
-        images = tf.math.reduce_mean(distribution.sample(), axis=0)
-        
+            logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
+        )
+        images = distribution.mean()
+
         return images
 
     def calculate_kl_loss(self, z_params: List[DistributionParams], balancing):
@@ -199,7 +207,7 @@ class NVAE(tf.keras.Model):
             loss = tf.reduce_sum(temp * kl_coeff_i, axis=[1])
         else:
             loss = tf.math.reduce_sum(
-                tf.convert_to_tensor(kl_per_group, dtype=tf.float16 if os.environ["MIXED_PRECISION"] else tf.float32), axis=[0]
+                tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
             )
         return loss
 
@@ -213,7 +221,7 @@ class NVAE(tf.keras.Model):
                 / groups_per_scale[num_scales - i - 1]
                 * tf.ones(
                     [groups_per_scale[num_scales - i - 1]],
-                    tf.float16 if os.environ["MIXED_PRECISION"] else tf.float32,
+                    tf.float32,
                 )
             )
         coeffs = tf.concat(coeffs, 0)
@@ -236,7 +244,11 @@ class NVAE(tf.keras.Model):
         ).log_prob(inputs)
         return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
 
-    def calculate_spectral_and_bn_loss(self):
+    
+
+
+
+    def calculate_spectral_and_bn_loss_2(self):
         bn_loss = 0
         spectral_loss = 0
         spectral_index = 0
@@ -289,8 +301,4 @@ class NVAE(tf.keras.Model):
                 update_loss(layer)
         self.u = u
         self.v = v
-        return self.sr_lambda * tf.cast(
-            spectral_loss, tf.float16 if os.environ["MIXED_PRECISION"] else tf.float32
-        ), self.sr_lambda * tf.cast(
-            bn_loss, tf.float16 if os.environ["MIXED_PRECISION"] else tf.float32
-        )
+        return self.sr_lambda * spectral_loss, self.sr_lambda * bn_loss
