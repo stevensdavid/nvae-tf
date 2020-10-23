@@ -5,9 +5,6 @@
 # http://creativecommons.org/licenses/by-nc/4.0/ or send a letter to
 # Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
-# Taken from NVIDIA at https://github.com/kynkaat/improved-precision-and-recall-metric/blob/master/precision_recall.py
-
-
 """k-NN precision and recall."""
 
 import numpy as np
@@ -18,7 +15,7 @@ from time import time
 
 def batch_pairwise_distances(U, V):
     """Compute pairwise distances between two batches of feature vectors."""
-    with tf.variable_scope('pairwise_dist_block'):
+    with tf.compat.v1.variable_scope('pairwise_dist_block'):
         # Squared norms of each row in U and V.
         norm_u = tf.reduce_sum(tf.square(U), 1)
         norm_v = tf.reduce_sum(tf.square(V), 1)
@@ -36,14 +33,21 @@ def batch_pairwise_distances(U, V):
 
 class DistanceBlock():
     """Provides multi-GPU support to calculate pairwise distances between two batches of feature vectors."""
-    def __init__(self, num_features, num_gpus):
+    def __init__(self, num_features, num_gpus, shapes):
         self.num_features = num_features
         self.num_gpus = num_gpus
 
+
+    def pairwise_distances(self, U, V):
         # Initialize TF graph to calculate pairwise distances.
         with tf.device('/cpu:0'):
-            self._features_batch1 = tf.placeholder(tf.float16, shape=[None, self.num_features])
-            self._features_batch2 = tf.placeholder(tf.float16, shape=[None, self.num_features])
+            #self._features_batch1 = tf.compat.v1.placeholder(tf.float16, shape=[None, self.num_features])
+            #self._features_batch2 = tf.compat.v1.placeholder(tf.float16, shape=[None, self.num_features])
+            #self._features_batch1 = tf.zeros(dtype=tf.float16, shape=shapes)
+            #self._features_batch2 = tf.zeros(dtype=tf.float16, shape=shapes)
+            self._features_batch1 = U
+            self._features_batch2 = V
+
             features_split2 = tf.split(self._features_batch2, self.num_gpus, axis=0)
             distances_split = []
             for gpu_idx in range(self.num_gpus):
@@ -51,9 +55,9 @@ class DistanceBlock():
                     distances_split.append(batch_pairwise_distances(self._features_batch1, features_split2[gpu_idx]))
             self._distance_block = tf.concat(distances_split, axis=1)
 
-    def pairwise_distances(self, U, V):
         """Evaluate pairwise distances between two batches of feature vectors."""
-        return self._distance_block.eval(feed_dict={self._features_batch1: U, self._features_batch2: V})
+        #return self._distance_block.eval(feed_dict={self._features_batch1: U, self._features_batch2: V})
+        return self._distance_block
 
 #----------------------------------------------------------------------------
 
@@ -170,7 +174,7 @@ def knn_precision_recall_features(ref_features, eval_features, nhood_sizes=[3],
     num_features = ref_features.shape[1]
 
     # Initialize DistanceBlock and ManifoldEstimators.
-    distance_block = DistanceBlock(num_features, num_gpus)
+    distance_block = DistanceBlock(num_features, num_gpus, ref_features.shape)
     ref_manifold = ManifoldEstimator(distance_block, ref_features, row_batch_size, col_batch_size, nhood_sizes) 
     eval_manifold = ManifoldEstimator(distance_block, eval_features, row_batch_size, col_batch_size, nhood_sizes)
 
