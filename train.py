@@ -37,37 +37,35 @@ def main(args):
     if args.debug:
         train_data = train_data.take(2)  # DEBUG OPTION
     batches_per_epoch = len(train_data) // args.batch_size
+    model = NVAE(
+        n_encoder_channels=args.n_encoder_channels,
+        n_decoder_channels=args.n_decoder_channels,
+        res_cells_per_group=args.res_cells_per_group,
+        n_preprocess_blocks=args.n_preprocess_blocks,
+        n_preprocess_cells=args.n_preprocess_cells,
+        n_postprocess_blocks=args.n_postprocess_blocks,
+        n_post_process_cells=args.n_postprocess_cells,
+        n_latent_per_group=args.n_latent_per_group,
+        n_latent_scales=len(args.n_groups_per_scale),
+        n_groups_per_scale=args.n_groups_per_scale,
+        sr_lambda=args.sr_lambda,
+        scale_factor=args.scale_factor,
+        total_epochs=args.epochs,
+        n_total_iterations=len(train_data) * args.epochs,  # for balance kl
+    )
     if args.resume_from > 0:
-        model = tf.keras.models.load_model(
-            os.path.join(args.model_save_dir, f"{args.resume_from}.tf")
+        model.load_weights(
+            os.path.join(args.model_save_dir, f"{args.resume_from}")
         )
-        model.epoch = args.resume_from
-    else:
-        model = NVAE(
-            n_encoder_channels=args.n_encoder_channels,
-            n_decoder_channels=args.n_decoder_channels,
-            res_cells_per_group=args.res_cells_per_group,
-            n_preprocess_blocks=args.n_preprocess_blocks,
-            n_preprocess_cells=args.n_preprocess_cells,
-            n_postprocess_blocks=args.n_postprocess_blocks,
-            n_post_process_cells=args.n_postprocess_cells,
-            n_latent_per_group=args.n_latent_per_group,
-            n_latent_scales=len(args.n_groups_per_scale),
-            n_groups_per_scale=args.n_groups_per_scale,
-            sr_lambda=args.sr_lambda,
-            scale_factor=args.scale_factor,
-            total_epochs=args.epochs,
-            n_total_iterations=len(train_data) * args.epochs,  # for balance kl
-        )
-        lr_schedule = tf.keras.experimental.CosineDecay(
-            initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch
-        )
-        adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
-        model.compile(optimizer=adamax, run_eagerly=True)
+    lr_schedule = tf.keras.experimental.CosineDecay(
+        initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch
+    )
+    adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
+    model.compile(optimizer=adamax, run_eagerly=True)
     training_callbacks = [
         callbacks.ModelCheckpoint(
-            filepath=os.path.join(args.model_save_dir, "{epoch}.tf"),
-            save_best_only=True, monitor="loss"
+            filepath=os.path.join(args.model_save_dir, "{epoch}"),
+            save_freq=args.model_save_frequency
         ),
         callbacks.LambdaCallback(on_epoch_begin=model.on_epoch_begin),
     ]
