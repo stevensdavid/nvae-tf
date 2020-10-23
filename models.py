@@ -1,6 +1,7 @@
 from common import DistributionParams, Rescaler
 from typing import List
 from postprocess import Postprocess
+from util import tile_images
 
 # from tensorflow.python.training.tracking.data_structures import NonDependency
 from decoder import Decoder, DecoderSampleCombiner
@@ -83,6 +84,11 @@ class NVAE(tf.keras.Model):
         self.total_epochs = total_epochs
         # Updated for each gradient pass, training step
         self.steps = 0
+        self.image_dim: int = None
+
+    def build(self, input_shape):
+        batch_size, h, w, c = input_shape
+        self.image_dim = h
 
     def call(self, inputs):
         x = self.preprocess(inputs)
@@ -131,23 +137,23 @@ class NVAE(tf.keras.Model):
             "spectral_loss": spectral_loss,
         }
 
-    def sample(self, image_size, n_samples=16, temperature=1.0):
-        scale_index = 0
-        scaling = 2 ** (self.n_preprocess_blocks + self.n_latent_scales - 1)
-        z0_size = [
-            n_samples,
-            self.n_latent_per_group,
-            image_size // scaling,
-            image_size // scaling,
-        ]
-        mu = softclamp5(tf.zeros(z0_size))
-        log_sigma = softclamp5(tf.zeros(z0_size))
+    def sample(self, n_samples=16, temperature=1.0):
+        n_samples = tf.cast(n_samples, float)
+        n = int(tf.math.floor(tf.math.sqrt(n_samples)))
+        s = tf.expand_dims(self.decoder.h, 0)
+        s = tf.tile(s, [n_samples, 1, 1, 1])
+
+        z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
+        mu = softclamp5(tf.zeros(z0_shape))
+        log_sigma = softclamp5(tf.zeros(z0_shape))
         sigma = tf.math.exp(log_sigma) + 1e-2
         if temperature != 1.0:
-            self.sigma *= temperature
+            sigma *= temperature
         z = self.decoder.sampler.sample(mu, sigma)
-        s = tf.expand_dims(self.decoder.h, axis=0)
+
         decoder_index = 0
+        # s should have shape 16,4,4,32
+        # z should have shape 8,4,4,20
         for layer in self.decoder.groups:
             if isinstance(layer, DecoderSampleCombiner):
                 if decoder_index > 0:
@@ -162,8 +168,6 @@ class NVAE(tf.keras.Model):
                 decoder_index += 1
             else:
                 s = layer(s)
-                if isinstance(layer, Rescaler):
-                    scale_index += 1
 
         reconstruction = self.postprocess(s)
 
@@ -172,7 +176,7 @@ class NVAE(tf.keras.Model):
         )
         images = distribution.mean()
 
-        return images
+        return tile_images(images, n)
 
     def calculate_kl_loss(self, z_params: List[DistributionParams], balancing):
         # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma
@@ -244,11 +248,11 @@ class NVAE(tf.keras.Model):
         ).log_prob(inputs)
         return -tf.math.reduce_sum(log_probs, axis=[1, 2, 3])
 
-    
-
-
-
     def calculate_spectral_and_bn_loss_2(self):
+
+        pass
+
+    def calculate_spectral_and_bn_loss(self):
         bn_loss = 0
         spectral_loss = 0
         spectral_index = 0
@@ -264,26 +268,34 @@ class NVAE(tf.keras.Model):
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
                 w = tf.reshape(w, [tf.shape(w)[0], -1])
+                n_power_iterations = 1
                 if spectral_index == len(u):
+                    # Initialize
                     d1, d2 = tf.shape(w)
                     u.append(tf.Variable(self.initializer([1, d1]), trainable=False))
                     v.append(tf.Variable(self.initializer([1, d2]), trainable=False))
-                v[spectral_index] = tf.math.l2_normalize(
-                    tf.squeeze(
-                        tf.linalg.matmul(tf.expand_dims(u[spectral_index], axis=1), w),
-                        [1],
-                    ),
-                    axis=1,
-                    epsilon=1e-3,
-                )
-                u[spectral_index] = tf.math.l2_normalize(
-                    tf.squeeze(
-                        tf.linalg.matmul(w, tf.expand_dims(v[spectral_index], axis=2)),
-                        [2],
-                    ),
-                    axis=1,
-                    epsilon=1e-3,
-                )
+                    n_power_iterations = 10
+                for _ in range(n_power_iterations):
+                    v[spectral_index] = tf.math.l2_normalize(
+                        tf.squeeze(
+                            tf.linalg.matmul(
+                                tf.expand_dims(u[spectral_index], axis=1), w
+                            ),
+                            [1],
+                        ),
+                        axis=1,
+                        epsilon=1e-3,
+                    )
+                    u[spectral_index] = tf.math.l2_normalize(
+                        tf.squeeze(
+                            tf.linalg.matmul(
+                                w, tf.expand_dims(v[spectral_index], axis=2)
+                            ),
+                            [2],
+                        ),
+                        axis=1,
+                        epsilon=1e-3,
+                    )
                 sigma = tf.linalg.matmul(
                     tf.expand_dims(u[spectral_index], axis=1),
                     tf.linalg.matmul(w, tf.expand_dims(v[spectral_index], axis=2)),

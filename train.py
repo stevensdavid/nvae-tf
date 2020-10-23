@@ -1,4 +1,5 @@
 from argparse import ArgumentError, ArgumentParser
+from models import NVAE
 import os
 import tensorflow as tf
 from tensorflow.keras import callbacks
@@ -28,7 +29,7 @@ def main(args):
         raise ArgumentError("Unsupported dataset")
     if args.debug:
         train_data = train_data.take(2)  # DEBUG OPTION
-    batches_per_epoch = len(train_data) // args.batch_size
+    batches_per_epoch = len(train_data)
     model = NVAE(
         n_encoder_channels=args.n_encoder_channels,
         n_decoder_channels=args.n_decoder_channels,
@@ -46,20 +47,36 @@ def main(args):
         n_total_iterations=len(train_data) * args.epochs,  # for balance kl
     )
     if args.resume_from > 0:
-        model.load_weights(
-            os.path.join(args.model_save_dir, f"{args.resume_from}")
-        )
+        model.load_weights(os.path.join(args.model_save_dir, f"{args.resume_from}"))
     lr_schedule = tf.keras.experimental.CosineDecay(
         initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch
     )
     adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
     model.compile(optimizer=adamax, run_eagerly=True)
+
+    image_logdir = os.path.join(args.tensorboard_log_dir, "images")
+    image_logger = tf.summary.create_file_writer(image_logdir)
+
+    def save_samples_to_tensorboard(epoch):
+        for temperature in [0.7, 0.8, 0.9, 1.0]:
+            images = model.sample(temperature=temperature)
+            images = tf.expand_dims(images, axis=0)
+            with image_logger.as_default():
+                tf.summary.image(
+                    f"t={temperature:.1f}",
+                    images,
+                    step=epoch,
+                )
+
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}"),
-            save_freq=args.model_save_frequency
+            save_freq=args.model_save_frequency,
         ),
-        callbacks.LambdaCallback(on_epoch_begin=model.on_epoch_begin),
+        callbacks.LambdaCallback(
+            on_epoch_begin=model.on_epoch_begin,
+            on_epoch_end=lambda epoch, _: save_samples_to_tensorboard(epoch),
+        ),
     ]
     if args.patience:
         training_callbacks.append(
@@ -80,7 +97,8 @@ def main(args):
         callbacks=training_callbacks,
         initial_epoch=args.resume_from,
     )
-    model.save(os.path.join(args.model_save_dir, "final.tf"), save_format="tf")
+    # Statement crashes due to eager execution. Use final checkpoint instead.
+    # model.save(os.path.join(args.model_save_dir, "final.tf"), save_format="tf")
 
 
 def parse_args():

@@ -49,6 +49,7 @@ class Decoder(tf.keras.Model):
                 mult /= scale_factor
         self.final_dec = GenerativeResidualCell(mult * n_decoder_channels)
         self.mult = mult
+        self.z0_shape = None
 
     def build(self, input_shape):
         _, h, w, _ = input_shape
@@ -57,6 +58,8 @@ class Decoder(tf.keras.Model):
     def call(self, prior, enc_dec_combiners: List):
         z_params = []
         z0, params = self.sampler(prior, z_idx=0)
+        if self.z0_shape is None:
+            self.z0_shape = tf.shape(z0)[1:]
         z_params.append(params)
         h = tf.expand_dims(self.h, 0)
         h = tf.tile(h, [tf.shape(z0)[0], 1, 1, 1])
@@ -94,15 +97,15 @@ class GenerativeResidualCell(tf.keras.Model):
 
     def __init__(self, output_channels, expansion_ratio=6, **kwargs):
         super().__init__(**kwargs)
-        self.batch_norm1 = layers.BatchNormalization(momentum=.05)
+        self.batch_norm1 = layers.BatchNormalization(momentum=0.05)
         self.conv1 = layers.Conv2D(
             expansion_ratio * output_channels, (1, 1), padding="same"
         )
-        self.batch_norm2 = layers.BatchNormalization(momentum=.05)
+        self.batch_norm2 = layers.BatchNormalization(momentum=0.05)
         self.depth_conv = layers.DepthwiseConv2D((5, 5), padding="same")
-        self.batch_norm3 = layers.BatchNormalization(momentum=.05)
+        self.batch_norm3 = layers.BatchNormalization(momentum=0.05)
         self.conv2 = layers.Conv2D(output_channels, (1, 1), padding="same")
-        self.batch_norm4 = layers.BatchNormalization(momentum=.05)
+        self.batch_norm4 = layers.BatchNormalization(momentum=0.05)
         self.se = SqueezeExcitation()
 
     def call(self, inputs):
