@@ -12,8 +12,11 @@ def tile_images(images):
     return tf.reshape(images, [n * height, n * width, channels])
 
 
-def calculate_log_p(z, mu, log_sigma):
-    sigma = tf.math.exp(log_sigma) + 1e-2
+def calculate_log_p(z, mu, sigma):
     normalized_z = (z - mu) / sigma
-    log_p = -0.5 * normalized_z * normalized_z - 0.5 * tf.math.log(2*tf.constant(math.pi)) - log_sigma
+    log_p = -0.5 * normalized_z * normalized_z - 0.5 * tf.math.log(2*tf.constant(math.pi)) - tf.math.log(sigma)
     return log_p
+
+
+def softclamp5(x):
+    return 5.0 * tf.math.tanh(x / 5.0)  # differentiable clamp [-5, 5]

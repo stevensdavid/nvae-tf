@@ -1,7 +1,7 @@
 from common import DistributionParams, Rescaler
 from typing import List
 from postprocess import Postprocess
-from util import tile_images
+from util import tile_images, softclamp5
 
 # from tensorflow.python.training.tracking.data_structures import NonDependency
 from decoder import Decoder, DecoderSampleCombiner
@@ -12,9 +12,6 @@ from preprocess import Preprocess
 from tensorflow_probability import distributions
 import numpy as np
 
-
-def softclamp5(x):
-    return 5.0 * tf.math.tanh(x / 5.0)  # differentiable clamp [-5, 5]
 
 class NVAE(tf.keras.Model):
     def __init__(
