@@ -58,15 +58,16 @@ def main(args):
     image_logger = tf.summary.create_file_writer(image_logdir)
 
     def save_samples_to_tensorboard(epoch):
-        for temperature in [0.7, 0.8, 0.9, 1.0]:
-            images, *_ = model.sample(temperature=temperature)
-            images = tf.expand_dims(images, axis=0)
-            with image_logger.as_default():
-                tf.summary.image(
-                    f"t={temperature:.1f}",
-                    images,
-                    step=epoch,
-                )
+        if epoch % args.sample_frequency == 0:
+            for temperature in [0.7, 0.8, 0.9, 1.0]:
+                images, *_ = model.sample(temperature=temperature)
+                images = tf.expand_dims(images, axis=0)
+                with image_logger.as_default():
+                    tf.summary.image(
+                        f"t={temperature:.1f}",
+                        images,
+                        step=epoch,
+                    )
 
     def evaluate_model():
         import evaluate as e
@@ -213,6 +214,12 @@ def parse_args():
         type=str,
         default="logs",
         help="Directory to save Tensorboard logs in",
+    )
+    parser.add_argument(
+        "--sample_frequency", 
+        type=int, 
+        default=10, 
+        help="Frequency in epochs to sample images which are stored in Tensorboard"
     )
     parser.add_argument(
         "--log_frequency",
