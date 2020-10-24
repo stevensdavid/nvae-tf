@@ -8,6 +8,7 @@ import perceptual_path_length as ppl
 def save_samples_to_tensorboard(epoch, model, image_logger):
     for temperature in [0.7, 0.8, 0.9, 1.0]:
         images, *_ = model.sample(temperature=temperature)
+        images = tile_images(images)
         images = tf.expand_dims(images, axis=0)
         with image_logger.as_default():
             tf.summary.image(

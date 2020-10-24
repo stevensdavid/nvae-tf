@@ -182,7 +182,7 @@ class NVAE(tf.keras.Model):
         z1 = self.decoder.sampler.sample(mu, log_sigma)
         z2 = self.decoder.sampler.sample(mu, log_sigma)
         # return images and mu, sigma, s used for sampling last hierarchical z in turn enabling sampling of images
-        return tile_images(images, n), last_s, z1, z2
+        return images, last_s, z1, z2
 
 	# As sample(), but starts from a fixed last hierarchical z given by mu, sigma and s. See sample() for details.
     def sample_with_z(self, z, s):
