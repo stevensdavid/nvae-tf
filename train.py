@@ -1,4 +1,5 @@
 from argparse import ArgumentError, ArgumentParser
+from evaluate import save_reconstructions_to_tensorboard
 import os
 import tensorflow as tf
 from tensorflow.keras import callbacks
@@ -63,8 +64,10 @@ def main(args):
     def on_epoch_end(epoch, logs=None):
         if epoch % args.sample_frequency == 0:
             save_samples_to_tensorboard(epoch, model, image_logger)
-        if epoch % args.evaluate_frequency == 0:
-            evaluate_model(epoch, model, test_data, metrics_logger, args.batch_size)
+            save_reconstructions_to_tensorboard(epoch, model, test_data, image_logger)
+        # TODO: evaluate is buggy
+        # if epoch % args.evaluate_frequency == 0:
+        #     evaluate_model(epoch, model, test_data, metrics_logger, args.batch_size)
 
     training_callbacks = [
         callbacks.ModelCheckpoint(
