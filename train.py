@@ -68,7 +68,7 @@ def main(args):
                     step=epoch,
                 )
 
-	def evaluate_model():
+    def evaluate_model():
         import evaluate as e
         #PPL
         #slerp, slerp_perturbed = e.perceptual_path_length_init()
@@ -110,6 +110,7 @@ def main(args):
         epochs=args.epochs,
         callbacks=training_callbacks,
         initial_epoch=args.resume_from,
+        verbose=1 if args.debug else 2,
     )
     # Statement crashes due to eager execution. Use final checkpoint instead.
     # model.save(os.path.join(args.model_save_dir, "final.tf"), save_format="tf")
