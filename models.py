@@ -150,7 +150,7 @@ class NVAE(tf.keras.Model):
         log_sigma = softclamp5(tf.zeros(z0_shape))
         # sigma = tf.math.exp(log_sigma) + 1e-2
         if temperature != 1.0:
-            log_sigma += tf.log(temperature)
+            log_sigma += tf.math.log(temperature)
         z = self.decoder.sampler.sample(mu, log_sigma)
 
         decoder_index = 0
