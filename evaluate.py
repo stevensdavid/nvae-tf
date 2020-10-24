@@ -3,6 +3,7 @@ import numpy as np
 import skimage.transform
 import scipy.linalg as scalg
 import precision_recall as prec_rec
+import perceptual_path_length as ppl
 
 # Takes 2 batches of images (b_size x 299 x 299 x 3) from different sources and calculates a FID score.
 # Lower scores indicate closer resemblance in generated material to another data source.
@@ -26,6 +27,18 @@ def precision_recall(images1,images2):
     #tf.compat.v1.enable_eager_execution()
     return pr['precision'], pr['recall']
 
+# Calculates slerp from sampled latents. To continue PPL, generate images from the result of this function
+# and call perceptual_path_length(images1,images2).
+def perceptual_path_length_init():
+    pass
+
+# Takes generated images from interpolated latents and gives the PPL.
+def perceptual_path_length(images1, images2):
+    if not(images1.shape[1:] == (224,224,3) and images2.shape[1:] == (224,224,3)):
+        images1,images2 = resize(images1), resize(images2)
+    
+    return e.ppl(images1, images2)
+
 # For comparing generated and real samples via Inception v3 latent representation.
 # Returns latent activations from 2 sets of image batches.
 def latent_activations(images1,images2):
@@ -44,12 +57,14 @@ def gen_images(b_size,s1,s2,m1,m2):
     im2 = tf.random.normal(shape=[b_size,32,32,3],stddev=s2,mean=m2,dtype=tf.dtypes.float32)
     return im1,im2
     
-def resize(images):
+def resize(images, target_shape=(299, 299, 3)):
+    if tf.shape(images)[-1] == 1:
+        images = tf.image.grayscale_to_rgb(images)
     print(images.shape)
     resized_images = []
     for img in images:
         print(img.shape)
-        resized_images.append(skimage.transform.resize(img,(299,299,3),0))
+        resized_images.append(skimage.transform.resize(img, target_shape, 0))
     return tf.convert_to_tensor(resized_images, dtype=tf.float32)
 
 #-------For standalone debugging------

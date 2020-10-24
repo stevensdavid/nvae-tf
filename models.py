@@ -145,12 +145,13 @@ class NVAE(tf.keras.Model):
         z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
         mu = softclamp5(tf.zeros(z0_shape))
         log_sigma = softclamp5(tf.zeros(z0_shape))
-        sigma = tf.math.exp(log_sigma) + 1e-2
+        # sigma = tf.math.exp(log_sigma) + 1e-2
         if temperature != 1.0:
-            sigma *= temperature
-        z = self.decoder.sampler.sample(mu, sigma)
+            log_sigma += tf.log(temperature)
+        z = self.decoder.sampler.sample(mu, log_sigma)
 
         decoder_index = 0
+        last_s = None
         # s should have shape 16,4,4,32
         # z should have shape 8,4,4,20
         for layer in self.decoder.groups:
@@ -161,8 +162,9 @@ class NVAE(tf.keras.Model):
                     )
                     mu = softclamp5(mu)
                     log_sigma = softclamp5(log_sigma)
-                    sigma = tf.math.exp(log_sigma) + 1e-2
-                    z = self.decoder.sampler.sample(mu, sigma)
+                    # sigma = tf.math.exp(log_sigma) + 1e-2
+                    z = self.decoder.sampler.sample(mu, log_sigma)
+                last_s = s
                 s = layer(s, z)
                 decoder_index += 1
             else:
@@ -174,8 +176,22 @@ class NVAE(tf.keras.Model):
             logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
         )
         images = distribution.mean()
+        z1 = self.decoder.sampler.sample(mu, log_sigma)
+        z2 = self.decoder.sampler.sample(mu, log_sigma)
+        # return images and mu, sigma, s used for sampling last hierarchical z in turn enabling sampling of images
+        return tile_images(images, n), last_s, z1, z2
 
-        return tile_images(images, n)
+	# As sample(), but starts from a fixed last hierarchical z given by mu, sigma and s. See sample() for details.
+    def sample_with_z(self, z, s):
+        last_gen_layer = self.decoder.groups[-1]
+        s = last_gen_layer(s,z)
+        reconstruction = self.postprocess(s)
+        distribution = distributions.Bernoulli(
+            logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
+        )
+        images = distribution.mean()
+        return images
+        
 
     def calculate_kl_loss(self, z_params: List[DistributionParams], balancing):
         # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma

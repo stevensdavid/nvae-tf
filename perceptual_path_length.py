@@ -88,6 +88,8 @@ class PPL(metric_base.MetricBase):
                     c = int(images.shape[2] // 8)
                     images = images[:, :, c*3 : c*7, c*2 : c*6]
 
+
+
                 # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
                 factor = images.shape[2] // 256
                 if factor > 1:

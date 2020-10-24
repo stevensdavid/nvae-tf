@@ -59,7 +59,7 @@ def main(args):
 
     def save_samples_to_tensorboard(epoch):
         for temperature in [0.7, 0.8, 0.9, 1.0]:
-            images = model.sample(temperature=temperature)
+            images, *_ = model.sample(temperature=temperature)
             images = tf.expand_dims(images, axis=0)
             with image_logger.as_default():
                 tf.summary.image(
@@ -67,6 +67,20 @@ def main(args):
                     images,
                     step=epoch,
                 )
+
+	def evaluate_model():
+        import evaluate as e
+        #PPL
+        #slerp, slerp_perturbed = e.perceptual_path_length_init()
+        #images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
+        for temperature in [0.7, 0.8, 0.9, 1.0]:
+            _, last_s, z1, z2 = model.sample(temperature=temperature)
+            slerp, slerp_perturbed = e.perceptual_path_length_init(z1, z2)
+            images1, images2 = model.sample_with_z(z1,last_s), model.sample_with_z(z2,last_s)
+            ppl = e.perceptual_path_length(images1, images2)
+            avg_ppl = tf.reduce_mean(ppl)
+        #PR
+        #FID
 
     training_callbacks = [
         callbacks.ModelCheckpoint(
