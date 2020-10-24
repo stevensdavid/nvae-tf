@@ -56,6 +56,8 @@ def main(args):
 
     image_logdir = os.path.join(args.tensorboard_log_dir, "images")
     image_logger = tf.summary.create_file_writer(image_logdir)
+    metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
+    metrics_logger = tf.summary.create_file_writer(metrics_logdir)
 
     def save_samples_to_tensorboard(epoch):
         if epoch % args.sample_frequency == 0:
@@ -69,19 +71,25 @@ def main(args):
                         step=epoch,
                     )
 
-    def evaluate_model():
+    def evaluate_model(epoch):
         import evaluate as e
         #PPL
         #slerp, slerp_perturbed = e.perceptual_path_length_init()
         #images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
+        # TODO: Handle entire dataset
+        test_samples, _ = next(test_data.as_numpy_iterator())
+        
         for temperature in [0.7, 0.8, 0.9, 1.0]:
-            _, last_s, z1, z2 = model.sample(temperature=temperature)
+            generated_images, last_s, z1, z2 = model.sample(temperature=temperature, n_samples=args.batch_size)
+            #PPL
             slerp, slerp_perturbed = e.perceptual_path_length_init(z1, z2)
             images1, images2 = model.sample_with_z(z1,last_s), model.sample_with_z(z2,last_s)
             ppl = e.perceptual_path_length(images1, images2)
             avg_ppl = tf.reduce_mean(ppl)
-        #PR
-        #FID
+        	#PR
+            precision, recall = e.precision_recall(generated_images, test_samples)
+        	#FID
+            fid = tf.reduce_mean(e.fid_score(generated_images, test_samples))
 
     training_callbacks = [
         callbacks.ModelCheckpoint(
