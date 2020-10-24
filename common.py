@@ -86,12 +86,12 @@ class Sampler(tf.keras.Model):
                 enc_mu,
                 enc_sigma,
                 tf.zeros_like(enc_mu),
-                tf.zeros_like(enc_sigma),
+                tf.zeros_like(enc_sigma) + 1e-2,
             )
             return z, params
         # Get decoder parameters
         raw_dec_mu, raw_dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
-        dec_mu  = softclamp5(raw_dec_mu),
+        dec_mu  = softclamp5(raw_dec_mu)
         dec_sigma = tf.math.exp(softclamp5(raw_dec_log_sigma)) + 1e-2
         enc_mu = softclamp5(enc_mu_offset + raw_dec_mu)
         enc_sigma = tf.math.exp(softclamp5(raw_dec_log_sigma + enc_log_sigma_offset)) + 1e-2
