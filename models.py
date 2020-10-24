@@ -199,8 +199,8 @@ class NVAE(tf.keras.Model):
         loss = 0
 
         for g in z_params:
-            term1 = (g.dec_mu - g.enc_mu) / g.enc_sigma
-            term2 = g.dec_sigma / g.enc_sigma
+            term1 = (g.enc_mu - g.dec_mu) / g.dec_sigma
+            term2 = g.enc_sigma / g.dec_sigma
             kl = 0.5 * (term1 * term1 + term2 * term2) - 0.5 - tf.math.log(term2)
             kl_per_group.append(tf.math.reduce_sum(kl, axis=[1, 2, 3]))
 

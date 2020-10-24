@@ -75,30 +75,30 @@ class Sampler(tf.keras.Model):
         return mu, log_sigma
 
     def call(self, prior, z_idx) -> Tuple[tf.Tensor, DistributionParams]:
-        enc_mu, enc_log_sigma = self.get_params(self.enc_sampler, z_idx, prior)
-        clamped_enc_mu, clamped_enc_sigma = (
-            softclamp5(enc_mu),
-            tf.math.exp(softclamp5(enc_log_sigma)) + 1e-2,
-        )
+        # Get encoder offsets
+        enc_mu_offset, enc_log_sigma_offset = self.get_params(self.enc_sampler, z_idx, prior)
         if z_idx == 0:
-            sample = self.sample(clamped_enc_mu, clamped_enc_sigma)
+            # Prior is zeroes
+            enc_mu = softclamp5(enc_mu_offset)
+            enc_sigma = tf.math.exp(softclamp5(enc_log_sigma_offset)) + 1e-2
+            z = self.sample(enc_mu, enc_sigma)
             params = DistributionParams(
-                clamped_enc_mu,
-                clamped_enc_sigma,
-                clamped_enc_mu,
-                clamped_enc_sigma,
+                enc_mu,
+                enc_sigma,
+                tf.zeros_like(enc_mu),
+                tf.zeros_like(enc_sigma),
             )
-            return sample, params
-        # Get decoder offsets
-        dec_mu, dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
-        clamped_dec_mu, clamped_dec_sigma = (
-            softclamp5(dec_mu + enc_mu),
-            tf.math.exp(softclamp5(dec_log_sigma + enc_log_sigma)) + 1e-2,
-        )
+            return z, params
+        # Get decoder parameters
+        raw_dec_mu, raw_dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
+        dec_mu  = softclamp5(raw_dec_mu),
+        dec_sigma = tf.math.exp(softclamp5(raw_dec_log_sigma)) + 1e-2
+        enc_mu = softclamp5(enc_mu_offset + raw_dec_mu)
+        enc_sigma = tf.math.exp(softclamp5(raw_dec_log_sigma + enc_log_sigma_offset)) + 1e-2
         params = DistributionParams(
-            clamped_enc_mu, clamped_enc_sigma, clamped_dec_mu, clamped_dec_sigma
+            enc_mu, enc_sigma, dec_mu, dec_sigma
         )
-        z = self.sample(clamped_dec_mu, clamped_dec_sigma)
+        z = self.sample(dec_mu, dec_sigma)
         return z, params
 
 
