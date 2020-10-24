@@ -1,3 +1,5 @@
+from models import NVAE
+from util import tile_images
 import tensorflow as tf
 import numpy as np
 import skimage.transform
@@ -24,11 +26,13 @@ def evaluate_model(epoch, model, test_data, metrics_logger, batch_size):
     # images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
     # TODO: Handle entire dataset
     test_samples, _ = next(test_data.as_numpy_iterator())
+    test_samples = tf.convert_to_tensor(test_samples)
     with metrics_logger.as_default():
         # Negative log-likelihood
-        nll = ...
-        # tf.sumamry.scalar(f"negative_log_likelihood", nll, step=epoch)
+        # nll = neg_log_likelihood(model, test_data)
+        # tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
         for temperature in [0.7, 0.8, 0.9, 1.0]:
+            # TODO: Handle batches, perform 1000 attempts and average
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
@@ -39,14 +43,28 @@ def evaluate_model(epoch, model, test_data, metrics_logger, batch_size):
                 model.sample_with_z(slerp_perturbed, last_s),
             )
             ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+            ppl = None
             # PR
             precision, recall = precision_recall(generated_images, test_samples)
             # FID
             fid = tf.reduce_mean(fid_score(generated_images, test_samples))
-            tf.sumamry.scalar(f"t={temperature}/ppl", ppl, step=epoch)
-            tf.sumamry.scalar(f"t={temperature}/precision", precision, step=epoch)
-            tf.sumamry.scalar(f"t={temperature}/recall", recall, step=epoch)
-            tf.sumamry.scalar(f"t={temperature}/fid", fid, step=epoch)
+            tf.summary.scalar(f"t={temperature}/ppl", ppl, step=epoch)
+            tf.summary.scalar(f"t={temperature}/precision", precision, step=epoch)
+            tf.summary.scalar(f"t={temperature}/recall", recall, step=epoch)
+            tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
+
+
+def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset):
+    n_attempts = 10
+    nll = 0
+    for batch, _ in test_data:
+        batch_logs = []
+        for _ in range(n_attempts):
+            reconstruction, _, log_p, log_q = model(batch)
+            log_iw = -model.calculate_recon_loss(batch, reconstruction) - log_q + log_p
+            batch_logs.append(log_iw)
+        nll -= tf.math.reduce_mean(tf.math.reduce_logsumexp(tf.stack(batch_logs), axis=0) - n_attempts)
+    return nll / len(test_data)
 
 
 # Takes 2 batches of images (b_size x 299 x 299 x 3) from different sources and calculates a FID score.
@@ -55,7 +73,9 @@ def evaluate_model(epoch, model, test_data, metrics_logger, batch_size):
 # TODO: support for batch size=1 (?) and progress logging
 def fid_score(images1,images2):
     act1,act2 = latent_activations(images1,images2, 'IV3')
-	# model activations as gaussians 
+    act1 = act1.numpy()
+    act2 = act2.numpy()
+    # model activations as gaussians 
     mu1, sigma1 = act1.mean(axis=0), np.cov(act1, rowvar=False)
     mu2, sigma2 = act2.mean(axis=0), np.cov(act2, rowvar=False)
     # calculate distance
@@ -74,7 +94,7 @@ def precision_recall(images1,images2):
 # Calculates slerp from sampled latents. To continue PPL, generate images from the result of this function
 # and call perceptual_path_length(images1,images2).
 def perceptual_path_length_init(z1, z2, epsilon=1e-4):
-    t = tf.random_uniform([tf.shape(z1)[0]], 0.0, 1.0)
+    t = tf.random.uniform([tf.shape(z1)[0]], 0.0, 1.0)
     return ppl.slerp(z1, z2, t), ppl.slerp(z1, z2, t + epsilon)
 
 # Takes generated images from interpolated latents and gives the PPL.
@@ -92,14 +112,16 @@ def latent_activations(images1,images2, model_name):
     act1, act2 = 0,0
 
     if model_name == 'IV3':
-    	model = tf.keras.applications.InceptionV3(include_top=False, weights='imagenet',pooling='avg',input_shape=(299,299,3))
+        # TODO: Use 
+        model = tf.keras.applications.InceptionV3(include_top=False, weights='imagenet',pooling='avg',input_shape=(299,299,3))
         act1 = tf.convert_to_tensor(model.predict(images1, ),dtype=tf.float32)
-    	act2 = tf.convert_to_tensor(model.predict(images2),dtype=tf.float32)
+        act2 = tf.convert_to_tensor(model.predict(images2),dtype=tf.float32)
     elif model_name == 'VGG':
-    	model = misc.load_pkl('https://nvlabs-fi-cdn.nvidia.com/stylegan/networks/metrics/vgg16_zhang_perceptual.pkl')
+        # TODO: Fix this! we don't have misc
+        model = misc.load_pkl('https://nvlabs-fi-cdn.nvidia.com/stylegan/networks/metrics/vgg16_zhang_perceptual.pkl')
         act1 = tf.convert_to_tensor(model.get_output_for(images1, images2),dtype=tf.float32)
 
-	# latent representation
+    # latent representation
     
     return act1,act2
 
@@ -111,10 +133,8 @@ def gen_images(b_size,s1,s2,m1,m2):
 def resize(images, target_shape=(299, 299, 3)):
     if tf.shape(images)[-1] == 1:
         images = tf.image.grayscale_to_rgb(images)
-    print(images.shape)
     resized_images = []
     for img in images:
-        print(img.shape)
         resized_images.append(skimage.transform.resize(img, target_shape, 0))
     return tf.convert_to_tensor(resized_images, dtype=tf.float32)
 

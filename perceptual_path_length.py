@@ -24,7 +24,7 @@ def slerp(a, b, t):
     a = normalize(a)
     b = normalize(b)
     d = tf.reduce_sum(a * b, axis=-1, keepdims=True)
-    p = t * tf.math.acos(d)
+    p = tf.reshape(t, [-1, 1,1,1]) * tf.math.acos(d)
     c = normalize(b - d * a)
     d = a * tf.math.cos(p) + c * tf.math.sin(p)
     return normalize(d)

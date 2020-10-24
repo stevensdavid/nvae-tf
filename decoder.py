@@ -3,6 +3,7 @@ from common import RescaleType, SqueezeExcitation, Rescaler, Sampler
 import tensorflow as tf
 from tensorflow.keras import layers, activations, Sequential
 from tensorflow_addons.layers import SpectralNormalization
+from util import calculate_log_p
 
 
 class Decoder(tf.keras.Model):
@@ -58,7 +59,11 @@ class Decoder(tf.keras.Model):
 
     def call(self, prior, enc_dec_combiners: List):
         z_params = []
+        all_log_p = []
+        all_log_q = []
         z0, params = self.sampler(prior, z_idx=0)
+        all_log_q.append(calculate_log_p(z0, params.enc_mu + params.dec_mu, params.enc_log_sigma + params.dec_log_sigma))
+        all_log_p.append(calculate_log_p(z0, params.enc_mu, params.enc_log_sigma))
         if self.z0_shape is None:
             self.z0_shape = tf.shape(z0)[1:]
         z_params.append(params)
@@ -71,13 +76,21 @@ class Decoder(tf.keras.Model):
             if isinstance(group, DecoderSampleCombiner):
                 prior = enc_dec_combiners[combine_idx](x)
                 z_sample, params = self.sampler(prior, combine_idx + 1)
+                all_log_q.append(calculate_log_p(z_sample, params.enc_mu + params.dec_mu, params.enc_log_sigma + params.dec_log_sigma))
+                all_log_p.append(calculate_log_p(z_sample, params.enc_mu, params.enc_log_sigma))
                 z_params.append(params)
                 x = group(x, z_sample)
                 combine_idx += 1
             else:
                 x = group(x)
+        
+        log_p = tf.zeros((tf.shape(x)[0]))
+        log_q = tf.zeros((tf.shape(x)[0]))
+        for p, q in zip(all_log_p, all_log_q):
+            log_p += tf.reduce_sum(p, axis=[1,2,3])
+            log_q += tf.reduce_sum(q, axis=[1,2,3])
 
-        return self.final_dec(x), z_params
+        return self.final_dec(x), z_params, log_p, log_q
 
 
 class DecoderSampleCombiner(tf.keras.Model):

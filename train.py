@@ -19,8 +19,7 @@ def main(args):
     np.random.seed(args.seed)
     # Imported here so seed can be set before imports
     from models import NVAE
-    import evaluate as e
-    from util import evaluate_model, save_samples_to_tensorboard
+    from evaluate import evaluate_model, save_samples_to_tensorboard
 
     if args.dataset == "mnist":
         from datasets import load_mnist
@@ -29,7 +28,8 @@ def main(args):
     else:
         raise ArgumentError("Unsupported dataset")
     if args.debug:
-        train_data = train_data.take(2)  # DEBUG OPTION
+        train_data = train_data.take(4)  # DEBUG OPTION
+        test_data = test_data.take(4)
     batches_per_epoch = len(train_data)
     model = NVAE(
         n_encoder_channels=args.n_encoder_channels,

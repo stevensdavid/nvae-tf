@@ -16,7 +16,6 @@ import numpy as np
 def softclamp5(x):
     return 5.0 * tf.math.tanh(x / 5.0)  # differentiable clamp [-5, 5]
 
-
 class NVAE(tf.keras.Model):
     def __init__(
         self,
@@ -96,9 +95,9 @@ class NVAE(tf.keras.Model):
         self.final_x = final_x
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
-        reconstruction, z_params = self.decoder(final_x, enc_dec_combiners)
+        reconstruction, z_params, log_p, log_q = self.decoder(final_x, enc_dec_combiners)
         reconstruction = self.postprocess(reconstruction)
-        return reconstruction, z_params
+        return reconstruction, z_params, log_p, log_q
 
     def train_step(self, data):
         """Training step for NVAE
@@ -117,7 +116,7 @@ class NVAE(tf.keras.Model):
             # We have labeled data. Remove the label.
             data = data[0]
         with tf.GradientTape() as tape:
-            reconstruction, z_params = self(data)
+            reconstruction, z_params, *_ = self(data)
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             bn_loss = self.calculate_bn_loss()
             # warming up KL term for first 30% of training
@@ -140,11 +139,8 @@ class NVAE(tf.keras.Model):
         }
 
     def sample(self, n_samples=16, temperature=1.0):
-        n_samples = tf.cast(n_samples, float)
-        n = int(tf.math.floor(tf.math.sqrt(n_samples)))
         s = tf.expand_dims(self.decoder.h, 0)
         s = tf.tile(s, [n_samples, 1, 1, 1])
-
         z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
         mu = softclamp5(tf.zeros(z0_shape))
         log_sigma = softclamp5(tf.zeros(z0_shape))
