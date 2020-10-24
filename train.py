@@ -100,7 +100,7 @@ def main(args):
     if args.tensorboard_log_dir:
         training_callbacks.append(
             callbacks.TensorBoard(
-                log_dir=args.tensorboard_log_dir, update_freq=args.log_frequency
+                log_dir=args.tensorboard_log_dir, update_freq=args.log_frequency * batches_per_epoch
             )
         )
 
