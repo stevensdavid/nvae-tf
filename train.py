@@ -1,5 +1,4 @@
 from argparse import ArgumentError, ArgumentParser
-from models import NVAE
 import os
 import tensorflow as tf
 from tensorflow.keras import callbacks
@@ -20,6 +19,8 @@ def main(args):
     np.random.seed(args.seed)
     # Imported here so seed can be set before imports
     from models import NVAE
+    import evaluate as e
+    from util import evaluate_model, save_samples_to_tensorboard
 
     if args.dataset == "mnist":
         from datasets import load_mnist
@@ -59,37 +60,11 @@ def main(args):
     metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
     metrics_logger = tf.summary.create_file_writer(metrics_logdir)
 
-    def save_samples_to_tensorboard(epoch):
+    def on_epoch_end(epoch, logs=None):
         if epoch % args.sample_frequency == 0:
-            for temperature in [0.7, 0.8, 0.9, 1.0]:
-                images, *_ = model.sample(temperature=temperature)
-                images = tf.expand_dims(images, axis=0)
-                with image_logger.as_default():
-                    tf.summary.image(
-                        f"t={temperature:.1f}",
-                        images,
-                        step=epoch,
-                    )
-
-    def evaluate_model(epoch):
-        import evaluate as e
-        #PPL
-        #slerp, slerp_perturbed = e.perceptual_path_length_init()
-        #images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
-        # TODO: Handle entire dataset
-        test_samples, _ = next(test_data.as_numpy_iterator())
-        
-        for temperature in [0.7, 0.8, 0.9, 1.0]:
-            generated_images, last_s, z1, z2 = model.sample(temperature=temperature, n_samples=args.batch_size)
-            #PPL
-            slerp, slerp_perturbed = e.perceptual_path_length_init(z1, z2)
-            images1, images2 = model.sample_with_z(z1,last_s), model.sample_with_z(z2,last_s)
-            ppl = e.perceptual_path_length(images1, images2)
-            avg_ppl = tf.reduce_mean(ppl)
-        	#PR
-            precision, recall = e.precision_recall(generated_images, test_samples)
-        	#FID
-            fid = tf.reduce_mean(e.fid_score(generated_images, test_samples))
+            save_samples_to_tensorboard(epoch, model, image_logger)
+        if epoch % args.evaluate_frequency == 0:
+            evaluate_model(epoch, model, test_data, metrics_logger, args.batch_size)
 
     training_callbacks = [
         callbacks.ModelCheckpoint(
@@ -98,7 +73,7 @@ def main(args):
         ),
         callbacks.LambdaCallback(
             on_epoch_begin=model.on_epoch_begin,
-            on_epoch_end=lambda epoch, _: save_samples_to_tensorboard(epoch),
+            on_epoch_end=on_epoch_end,
         ),
     ]
     if args.patience:
@@ -108,7 +83,8 @@ def main(args):
     if args.tensorboard_log_dir:
         training_callbacks.append(
             callbacks.TensorBoard(
-                log_dir=args.tensorboard_log_dir, update_freq=args.log_frequency * batches_per_epoch
+                log_dir=args.tensorboard_log_dir,
+                update_freq=args.log_frequency * batches_per_epoch,
             )
         )
 
@@ -224,10 +200,16 @@ def parse_args():
         help="Directory to save Tensorboard logs in",
     )
     parser.add_argument(
-        "--sample_frequency", 
-        type=int, 
-        default=10, 
-        help="Frequency in epochs to sample images which are stored in Tensorboard"
+        "--sample_frequency",
+        type=int,
+        default=10,
+        help="Frequency in epochs to sample images which are stored in Tensorboard",
+    )
+    parser.add_argument(
+        "--evaluate_frequency",
+        type=int,
+        default=10,
+        help="Number of epochs between each model evaluation (FID, PPL etc)",
     )
     parser.add_argument(
         "--log_frequency",

@@ -5,6 +5,49 @@ import scipy.linalg as scalg
 import precision_recall as prec_rec
 import perceptual_path_length as ppl
 
+def save_samples_to_tensorboard(epoch, model, image_logger):
+    for temperature in [0.7, 0.8, 0.9, 1.0]:
+        images, *_ = model.sample(temperature=temperature)
+        images = tf.expand_dims(images, axis=0)
+        with image_logger.as_default():
+            tf.summary.image(
+                f"t={temperature:.1f}",
+                images,
+                step=epoch,
+            )
+
+
+def evaluate_model(epoch, model, test_data, metrics_logger, batch_size):
+    # PPL
+    # slerp, slerp_perturbed = e.perceptual_path_length_init()
+    # images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
+    # TODO: Handle entire dataset
+    test_samples, _ = next(test_data.as_numpy_iterator())
+    with metrics_logger.as_default():
+        # Negative log-likelihood
+        nll = ...
+        # tf.sumamry.scalar(f"negative_log_likelihood", nll, step=epoch)
+        for temperature in [0.7, 0.8, 0.9, 1.0]:
+            generated_images, last_s, z1, z2 = model.sample(
+                temperature=temperature, n_samples=batch_size
+            )
+            # PPL
+            slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+            images1, images2 = (
+                model.sample_with_z(slerp, last_s),
+                model.sample_with_z(slerp_perturbed, last_s),
+            )
+            ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+            # PR
+            precision, recall = precision_recall(generated_images, test_samples)
+            # FID
+            fid = tf.reduce_mean(fid_score(generated_images, test_samples))
+            tf.sumamry.scalar(f"t={temperature}/ppl", ppl, step=epoch)
+            tf.sumamry.scalar(f"t={temperature}/precision", precision, step=epoch)
+            tf.sumamry.scalar(f"t={temperature}/recall", recall, step=epoch)
+            tf.sumamry.scalar(f"t={temperature}/fid", fid, step=epoch)
+
+
 # Takes 2 batches of images (b_size x 299 x 299 x 3) from different sources and calculates a FID score.
 # Lower scores indicate closer resemblance in generated material to another data source.
 # Inspired from: https://machinelearningmastery.com/how-to-implement-the-frechet-inception-distance-fid-from-scratch/
