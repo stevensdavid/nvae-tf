@@ -71,7 +71,7 @@ def main(args):
     training_callbacks = [
         callbacks.ModelCheckpoint(
             filepath=os.path.join(args.model_save_dir, "{epoch}"),
-            save_freq=args.model_save_frequency,
+            save_freq=args.model_save_frequency * batches_per_epoch,
         ),
         callbacks.LambdaCallback(
             on_epoch_begin=model.on_epoch_begin,
