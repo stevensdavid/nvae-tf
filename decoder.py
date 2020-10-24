@@ -62,8 +62,8 @@ class Decoder(tf.keras.Model):
         all_log_p = []
         all_log_q = []
         z0, params = self.sampler(prior, z_idx=0)
-        all_log_q.append(calculate_log_p(z0, params.enc_mu + params.dec_mu, params.enc_log_sigma + params.dec_log_sigma))
-        all_log_p.append(calculate_log_p(z0, params.enc_mu, params.enc_log_sigma))
+        all_log_q.append(calculate_log_p(z0, params.dec_mu, params.dec_sigma))
+        all_log_p.append(calculate_log_p(z0, params.enc_mu, params.enc_sigma))
         if self.z0_shape is None:
             self.z0_shape = tf.shape(z0)[1:]
         z_params.append(params)
@@ -76,8 +76,8 @@ class Decoder(tf.keras.Model):
             if isinstance(group, DecoderSampleCombiner):
                 prior = enc_dec_combiners[combine_idx](x)
                 z_sample, params = self.sampler(prior, combine_idx + 1)
-                all_log_q.append(calculate_log_p(z_sample, params.enc_mu + params.dec_mu, params.enc_log_sigma + params.dec_log_sigma))
-                all_log_p.append(calculate_log_p(z_sample, params.enc_mu, params.enc_log_sigma))
+                all_log_q.append(calculate_log_p(z_sample, params.dec_mu, params.dec_sigma))
+                all_log_p.append(calculate_log_p(z_sample, params.enc_mu, params.enc_sigma))
                 z_params.append(params)
                 x = group(x, z_sample)
                 combine_idx += 1

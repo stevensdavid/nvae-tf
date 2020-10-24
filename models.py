@@ -92,7 +92,9 @@ class NVAE(tf.keras.Model):
         self.final_x = final_x
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
-        reconstruction, z_params, log_p, log_q = self.decoder(final_x, enc_dec_combiners)
+        reconstruction, z_params, log_p, log_q = self.decoder(
+            final_x, enc_dec_combiners
+        )
         reconstruction = self.postprocess(reconstruction)
         return reconstruction, z_params, log_p, log_q
 
@@ -117,7 +119,7 @@ class NVAE(tf.keras.Model):
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             bn_loss = self.calculate_bn_loss()
             # warming up KL term for first 30% of training
-            beta = min(self.epoch / (0.3 * self.total_epochs), 1)
+            beta = min(self.steps / (0.3 * self.n_total_iterations), 1)
             activate_balancing = beta < 1
             if beta > 0:
                 kl_loss = beta * self.calculate_kl_loss(z_params, activate_balancing)
@@ -125,7 +127,6 @@ class NVAE(tf.keras.Model):
                 kl_loss = 0
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + bn_loss
-            # self.add_loss(loss+spectral_loss)
         gradients = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_weights))
         self.steps += 1
@@ -133,6 +134,7 @@ class NVAE(tf.keras.Model):
             "loss": total_loss,
             "reconstruction_loss": recon_loss,
             "kl_loss": kl_loss,
+            "bn_loss": bn_loss,
         }
 
     def sample(self, n_samples=16, temperature=1.0):
@@ -140,11 +142,10 @@ class NVAE(tf.keras.Model):
         s = tf.tile(s, [n_samples, 1, 1, 1])
         z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
         mu = softclamp5(tf.zeros(z0_shape))
-        log_sigma = softclamp5(tf.zeros(z0_shape))
-        # sigma = tf.math.exp(log_sigma) + 1e-2
+        sigma = tf.math.exp(softclamp5(tf.zeros(z0_shape))) + 1e-2
         if temperature != 1.0:
-            log_sigma += tf.math.log(temperature)
-        z = self.decoder.sampler.sample(mu, log_sigma)
+            sigma *= temperature
+        z = self.decoder.sampler.sample(mu, sigma)
 
         decoder_index = 0
         last_s = None
@@ -153,13 +154,16 @@ class NVAE(tf.keras.Model):
         for layer in self.decoder.groups:
             if isinstance(layer, DecoderSampleCombiner):
                 if decoder_index > 0:
+                    # z, _ = self.decoder.sampler(s, decoder_index)
                     mu, log_sigma = self.decoder.sampler.get_params(
                         self.decoder.sampler.dec_sampler, decoder_index, s
                     )
                     mu = softclamp5(mu)
-                    log_sigma = softclamp5(log_sigma)
-                    # sigma = tf.math.exp(log_sigma) + 1e-2
-                    z = self.decoder.sampler.sample(mu, log_sigma)
+                    sigma = tf.math.exp(softclamp5(log_sigma)) + 1e-2
+                    # TODO: This uses the relative residual distribution offset
+                    #       as an absolute distribution. NVLabs does this as well.
+                    #       Investigate correctness.
+                    z = self.decoder.sampler.sample(mu, sigma)
                 last_s = s
                 s = layer(s, z)
                 decoder_index += 1
@@ -172,36 +176,31 @@ class NVAE(tf.keras.Model):
             logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
         )
         images = distribution.mean()
-        z1 = self.decoder.sampler.sample(mu, log_sigma)
-        z2 = self.decoder.sampler.sample(mu, log_sigma)
+        z1 = self.decoder.sampler.sample(mu, sigma)
+        z2 = self.decoder.sampler.sample(mu, sigma)
         # return images and mu, sigma, s used for sampling last hierarchical z in turn enabling sampling of images
         return images, last_s, z1, z2
 
-	# As sample(), but starts from a fixed last hierarchical z given by mu, sigma and s. See sample() for details.
+    # As sample(), but starts from a fixed last hierarchical z given by mu, sigma and s. See sample() for details.
     def sample_with_z(self, z, s):
         last_gen_layer = self.decoder.groups[-1]
-        s = last_gen_layer(s,z)
+        s = last_gen_layer(s, z)
         reconstruction = self.postprocess(s)
         distribution = distributions.Bernoulli(
             logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
         )
         images = distribution.mean()
         return images
-        
 
     def calculate_kl_loss(self, z_params: List[DistributionParams], balancing):
-        # z_params: enc_mu, enc_log_sigma, dec_mu, dec_log_sigma
         # -KL(q(z1|x)||p(z1)) - sum[ KL(q(zl|x,z<l) || p(z|z<l))]
         kl_per_group = []
         # n_groups x batch_size x 4
         loss = 0
 
         for g in z_params:
-            enc_sigma = tf.math.exp(g.enc_log_sigma)
-            dec_sigma = tf.math.exp(g.dec_log_sigma)
-
-            term1 = (g.dec_mu - g.enc_mu) / enc_sigma
-            term2 = dec_sigma / enc_sigma
+            term1 = (g.dec_mu - g.enc_mu) / g.enc_sigma
+            term2 = g.dec_sigma / g.enc_sigma
             kl = 0.5 * (term1 * term1 + term2 * term2) - 0.5 - tf.math.log(term2)
             kl_per_group.append(tf.math.reduce_sum(kl, axis=[1, 2, 3]))
 
@@ -232,10 +231,7 @@ class NVAE(tf.keras.Model):
             coeffs.append(
                 np.square(2 ** i)
                 / groups_per_scale[num_scales - i - 1]
-                * tf.ones(
-                    [groups_per_scale[num_scales - i - 1]],
-                    tf.float32,
-                )
+                * tf.ones([groups_per_scale[num_scales - i - 1]], tf.float32,)
             )
         coeffs = tf.concat(coeffs, 0)
         coeffs /= tf.reduce_min(coeffs)

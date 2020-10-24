@@ -1,6 +1,7 @@
 import os
 from typing import Tuple
 from enum import Enum, auto
+from util import softclamp5
 import tensorflow as tf
 
 from tensorflow.keras import layers, activations, Sequential
@@ -11,9 +12,9 @@ from dataclasses import dataclass
 @dataclass
 class DistributionParams:
     enc_mu: float
-    enc_log_sigma: float
+    enc_sigma: float
     dec_mu: float
-    dec_log_sigma: float
+    dec_sigma: float
 
 
 class Sampler(tf.keras.Model):
@@ -62,9 +63,9 @@ class Sampler(tf.keras.Model):
                     )
                     self.dec_sampler.append(sampler)
 
-    def sample(self, mu, log_sigma):
+    def sample(self, mu, sigma):
         # reparametrization trick
-        z = mu + tf.random.normal(shape=tf.shape(mu), dtype=tf.float32) * log_sigma
+        z = mu + tf.random.normal(shape=tf.shape(mu), dtype=tf.float32) * sigma
         return z
 
     def get_params(self, sampler, z_idx, prior):
@@ -75,18 +76,29 @@ class Sampler(tf.keras.Model):
 
     def call(self, prior, z_idx) -> Tuple[tf.Tensor, DistributionParams]:
         enc_mu, enc_log_sigma = self.get_params(self.enc_sampler, z_idx, prior)
+        clamped_enc_mu, clamped_enc_sigma = (
+            softclamp5(enc_mu),
+            tf.math.exp(softclamp5(enc_log_sigma)) + 1e-2,
+        )
         if z_idx == 0:
+            sample = self.sample(clamped_enc_mu, clamped_enc_sigma)
             params = DistributionParams(
-                enc_mu,
-                enc_log_sigma,
-                tf.zeros_like(enc_mu),
-                tf.zeros_like(enc_log_sigma),
+                clamped_enc_mu,
+                clamped_enc_sigma,
+                clamped_enc_mu,
+                clamped_enc_sigma,
             )
-            return self.sample(enc_mu, enc_log_sigma), params
+            return sample, params
         # Get decoder offsets
         dec_mu, dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
-        params = DistributionParams(enc_mu, enc_log_sigma, dec_mu, dec_log_sigma)
-        z = self.sample(enc_mu + dec_mu, enc_log_sigma + dec_log_sigma)
+        clamped_dec_mu, clamped_dec_sigma = (
+            softclamp5(dec_mu + enc_mu),
+            tf.math.exp(softclamp5(dec_log_sigma + enc_log_sigma)) + 1e-2,
+        )
+        params = DistributionParams(
+            clamped_enc_mu, clamped_enc_sigma, clamped_dec_mu, clamped_dec_sigma
+        )
+        z = self.sample(clamped_dec_mu, clamped_dec_sigma)
         return z, params
 
 
