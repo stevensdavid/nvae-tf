@@ -79,7 +79,7 @@ class NVAE(tf.keras.Model):
         self.epoch = 0
         self.total_epochs = total_epochs
         # Updated for each gradient pass, training step
-        self.steps = 0
+        # self.steps = 0
         self.image_dim: int = None
 
     def build(self, input_shape):
@@ -119,7 +119,7 @@ class NVAE(tf.keras.Model):
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             bn_loss = self.calculate_bn_loss()
             # warming up KL term for first 30% of training
-            beta = min(self.steps / (0.3 * self.n_total_iterations), 1)
+            beta = min(self.epoch / (0.3 * self.total_epochs), 1)
             activate_balancing = beta < 1
             if beta > 0:
                 kl_loss = beta * self.calculate_kl_loss(z_params, activate_balancing)
@@ -129,7 +129,7 @@ class NVAE(tf.keras.Model):
             total_loss = loss + bn_loss
         gradients = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_weights))
-        self.steps += 1
+        # self.steps += 1
         return {
             "loss": total_loss,
             "reconstruction_loss": recon_loss,
