@@ -49,7 +49,6 @@ class Decoder(tf.keras.Model):
                     )
                 )
                 mult /= scale_factor
-        self.final_dec = GenerativeResidualCell(mult * n_decoder_channels)
         self.mult = mult
         self.z0_shape = None
 
@@ -90,7 +89,7 @@ class Decoder(tf.keras.Model):
             log_p += tf.reduce_sum(p, axis=[1,2,3])
             log_q += tf.reduce_sum(q, axis=[1,2,3])
 
-        return self.final_dec(x), z_params, log_p, log_q
+        return x, z_params, log_p, log_q
 
 
 class DecoderSampleCombiner(tf.keras.Model):
