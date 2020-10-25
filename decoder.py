@@ -55,7 +55,7 @@ class Decoder(tf.keras.Model):
 
     def build(self, input_shape):
         _, h, w, _ = input_shape
-        self.h = tf.Variable(tf.zeros((h, w, self.n_decoder_channels)), trainable=True)
+        self.h = tf.Variable(tf.random.uniform((h, w, self.n_decoder_channels), minval=0, maxval=1), trainable=True)
 
     def call(self, prior, enc_dec_combiners: List):
         z_params = []
