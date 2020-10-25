@@ -80,7 +80,7 @@ class Sampler(tf.keras.Model):
         if z_idx == 0:
             # Prior is standard normal distribution
             enc_mu = softclamp5(enc_mu_offset)
-            enc_sigma = tf.math.exp(softclamp5(enc_log_sigma_offset)) + 1
+            enc_sigma = tf.math.exp(softclamp5(enc_log_sigma_offset))
             z = self.sample(enc_mu, enc_sigma)
             params = DistributionParams(
                 enc_mu,
