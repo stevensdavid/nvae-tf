@@ -1,4 +1,3 @@
-
 from fid_utils import calculate_fid_given_paths
 from models import NVAE
 from util import tile_images
@@ -25,8 +24,12 @@ def save_samples_to_tensorboard(epoch, model, image_logger):
             )
 
 
-def save_reconstructions_to_tensorboard(epoch, model, test_data:tf.data.Dataset, image_logger):
-    batch = tf.convert_to_tensor(next(test_data.shuffle(buffer_size=10).as_numpy_iterator())[0])
+def save_reconstructions_to_tensorboard(
+    epoch, model, test_data: tf.data.Dataset, image_logger
+):
+    batch = tf.convert_to_tensor(
+        next(test_data.shuffle(buffer_size=10).as_numpy_iterator())[0]
+    )
     # Tensorboard can only display 3 images
     batch = batch[:3]
     reconstruction_logits, *_ = model(batch)
@@ -45,7 +48,9 @@ def save_reconstructions_to_tensorboard(epoch, model, test_data:tf.data.Dataset,
         tf.summary.image("test_reconstruction", comparison, step=epoch)
 
 
-def evaluate_model(epoch, model, test_data, metrics_logger, batch_size, n_attempts=1000):
+def evaluate_model(
+    epoch, model, test_data, metrics_logger, batch_size, n_attempts=1000
+):
     # PPL
     # slerp, slerp_perturbed = e.perceptual_path_length_init()
     # images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
@@ -58,9 +63,9 @@ def evaluate_model(epoch, model, test_data, metrics_logger, batch_size, n_attemp
         tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
         for temperature in [0.7, 0.8, 0.9, 1.0]:
             # TODO: Handle batches, perform 1000 attempts and average
-            temperature_scores = tf.convert_to_tensor([0., 0., 0., 0.])
+            temperature_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
             for attempt in range(n_attempts):
-                attempt_scores = tf.convert_to_tensor([0., 0., 0., 0.])
+                attempt_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
                 for test_batch, _ in test_data:
                     generated_images, last_s, z1, z2 = model.sample(
                         temperature=temperature, n_samples=batch_size
@@ -78,16 +83,19 @@ def evaluate_model(epoch, model, test_data, metrics_logger, batch_size, n_attemp
                     precision, recall = precision_recall(generated_images, test_batch)
                     attempt_scores[1] += precision
                     attempt_scores[2] += recall
-                    # FID
-                    fid = tf.reduce_mean(fid_score(generated_images, test_batch))
-                    attempt_scores[3] += fid
-                temperature_scores = attempt_scores / len(test_data) + temperature_scores
+                temperature_scores = (
+                    attempt_scores / len(test_data) + temperature_scores
+                )
+            fid = evaluate_fid(model, test_data, "mnist", batch_size=50, temperature=temperature)
             temperature_scores = temperature_scores / n_attempts
             tf.summary.scalar(f"t={temperature}/ppl", temperature_scores[0], step=epoch)
-            tf.summary.scalar(f"t={temperature}/precision", temperature_scores[1], step=epoch)
-            tf.summary.scalar(f"t={temperature}/recall", temperature_scores[2], step=epoch)
-            tf.summary.scalar(f"t={temperature}/fid", temperature_scores[3], step=epoch)
-                
+            tf.summary.scalar(
+                f"t={temperature}/precision", temperature_scores[1], step=epoch
+            )
+            tf.summary.scalar(
+                f"t={temperature}/recall", temperature_scores[2], step=epoch
+            )
+            tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
 
 
 def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
@@ -121,9 +129,9 @@ def fid_score(images1, images2):
     return np.sum((mu1 - mu2) ** 2.0) + np.trace(sigma1 + sigma2 - 2.0 * (covmean.real))
 
 
-def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size):
+def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
     dataset_dir = os.path.join("images", dataset_name, "actual")
-    output_dir = os.path.join("images", dataset_name, "generated")
+    output_dir = os.path.join("images", dataset_name, f"generated_t_{temperature}")
     os.makedirs(dataset_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
     if not os.listdir(dataset_dir):
@@ -138,11 +146,15 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size):
     sample_size = 10000
     print("[FID] Generating samples")
     for image_batch in range(sample_size // batch_size):
-        images, *_ = model.sample(n_samples=batch_size, return_mean=False)
+        images, *_ = model.sample(
+            n_samples=batch_size, return_mean=False, temperature=temperature
+        )
         save_images_to_dir(images, output_dir)
     os.makedirs("fid", exist_ok=True)
     print("[FID] Calculating FID")
-    fid_value = calculate_fid_given_paths([dataset_dir, output_dir], inception_path="fid")
+    fid_value = calculate_fid_given_paths(
+        [dataset_dir, output_dir], inception_path="fid"
+    )
     return fid_value
 
 
