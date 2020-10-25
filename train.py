@@ -110,7 +110,7 @@ def parse_args():
     parser.add_argument(
         "--epochs", type=int, default=400, help="Number of epochs to train"
     )
-    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--batch_size", default=144, type=int)
     # Hyperparameters
     parser.add_argument(
         "--n_encoder_channels",
@@ -206,7 +206,7 @@ def parse_args():
     parser.add_argument(
         "--sample_frequency",
         type=int,
-        default=10,
+        default=5,
         help="Frequency in epochs to sample images which are stored in Tensorboard",
     )
     parser.add_argument(
