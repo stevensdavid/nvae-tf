@@ -78,15 +78,15 @@ class Sampler(tf.keras.Model):
         # Get encoder offsets
         enc_mu_offset, enc_log_sigma_offset = self.get_params(self.enc_sampler, z_idx, prior)
         if z_idx == 0:
-            # Prior is zeroes
+            # Prior is standard normal distribution
             enc_mu = softclamp5(enc_mu_offset)
-            enc_sigma = tf.math.exp(softclamp5(enc_log_sigma_offset)) + 1e-2
+            enc_sigma = tf.math.exp(softclamp5(enc_log_sigma_offset)) + 1
             z = self.sample(enc_mu, enc_sigma)
             params = DistributionParams(
                 enc_mu,
                 enc_sigma,
                 tf.zeros_like(enc_mu),
-                tf.zeros_like(enc_sigma) + 1e-2,
+                tf.ones_like(enc_sigma),
             )
             return z, params
         # Get decoder parameters
