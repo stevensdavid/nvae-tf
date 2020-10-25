@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import absolute_import, division, print_function
 
 # This file contains code from https://github.com/bioinf-jku/TTUR
 # which is Apache 2 licensed.
@@ -223,7 +224,6 @@ samples respectivly.
 See --help to see further details.
 '''
 
-from __future__ import absolute_import, division, print_function
 import numpy as np
 import os
 import gzip, pickle
