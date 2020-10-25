@@ -1,6 +1,6 @@
 from fid_utils import calculate_fid_given_paths
 from models import NVAE
-from util import tile_images
+from util import tile_images, load_pkl
 import tensorflow as tf
 import numpy as np
 import skimage.transform
@@ -206,8 +206,7 @@ def latent_activations(images1, images2, model_name):
         act1 = tf.convert_to_tensor(model.predict(images1,), dtype=tf.float32)
         act2 = tf.convert_to_tensor(model.predict(images2), dtype=tf.float32)
     elif model_name == "VGG":
-        # TODO: Fix this! we don't have misc
-        model = misc.load_pkl(
+        model = load_pkl(
             "https://nvlabs-fi-cdn.nvidia.com/stylegan/networks/metrics/vgg16_zhang_perceptual.pkl"
         )
         act1 = tf.convert_to_tensor(
