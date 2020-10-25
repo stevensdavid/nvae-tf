@@ -47,9 +47,12 @@ def main(args):
         scale_factor=args.scale_factor,
         total_epochs=args.epochs,
         n_total_iterations=len(train_data) * args.epochs,  # for balance kl
+        step_based_warmup=args.step_based_warmup,
     )
     if args.resume_from > 0:
         model.load_weights(os.path.join(args.model_save_dir, f"{args.resume_from}"))
+        # best estimate for step is epochs * batch_size
+        model.step = args.resume_from * args.batch_size
     lr_schedule = tf.keras.experimental.CosineDecay(
         initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch
     )
@@ -75,8 +78,7 @@ def main(args):
             save_freq=args.model_save_frequency * batches_per_epoch,
         ),
         callbacks.LambdaCallback(
-            on_epoch_begin=model.on_epoch_begin,
-            on_epoch_end=on_epoch_end,
+            on_epoch_begin=model.on_epoch_begin, on_epoch_end=on_epoch_end,
         ),
     ]
     if args.patience:
@@ -86,8 +88,7 @@ def main(args):
     if args.tensorboard_log_dir:
         training_callbacks.append(
             callbacks.TensorBoard(
-                log_dir=args.tensorboard_log_dir,
-                update_freq=args.log_frequency * batches_per_epoch,
+                log_dir=args.tensorboard_log_dir, update_freq="epoch",
             )
         )
 
@@ -230,6 +231,11 @@ def parse_args():
         type=int,
         default=10,
         help="Number of epochs between each model save",
+    )
+    parser.add_argument(
+        "--step_based_warmup",
+        action="store_true",
+        help="Base warmup on batches trained instead of epochs",
     )
     parser.add_argument(
         "--seed", type=int, default=1, help="Random seed to use for initialization"

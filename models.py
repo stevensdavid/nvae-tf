@@ -30,6 +30,7 @@ class NVAE(tf.keras.Model):
         scale_factor,
         total_epochs,
         n_total_iterations,
+        step_based_warmup,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -78,8 +79,9 @@ class NVAE(tf.keras.Model):
         # Updated at start of each epoch
         self.epoch = 0
         self.total_epochs = total_epochs
+        self.step_based_warmup = step_based_warmup
         # Updated for each gradient pass, training step
-        # self.steps = 0
+        self.steps = 0
         self.image_dim: int = None
 
     def build(self, input_shape):
@@ -119,14 +121,15 @@ class NVAE(tf.keras.Model):
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             bn_loss = self.calculate_bn_loss()
             # warming up KL term for first 30% of training
-            beta = min(self.epoch / (0.3 * self.total_epochs), 1)
+            warmup_metric = self.steps if self.step_based_warmup else self.epoch
+            beta = min(warmup_metric / (0.3 * self.n_total_iterations), 1)
             activate_balancing = beta < 1
             kl_loss = beta * self.calculate_kl_loss(z_params, activate_balancing)
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
             total_loss = loss + bn_loss
         gradients = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_weights))
-        # self.steps += 1
+        self.steps += 1
         return {
             "loss": total_loss,
             "reconstruction_loss": recon_loss,
