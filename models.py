@@ -219,7 +219,10 @@ class NVAE(tf.keras.Model):
             kl_coeff_i = kl_coeff_i / kl_alphas * total_kl
             kl_coeff_i = kl_coeff_i / tf.reduce_mean(kl_coeff_i, 0, keepdims=True)
             temp = tf.stack(kl_all, 1)
-            loss = tf.reduce_sum(temp * kl_coeff_i, axis=[1])
+            # We stop gradient through kl_coeff_i because we are only interested
+            # in changing the magnitude of the loss, not the direction of the 
+            # gradient.
+            loss = tf.reduce_sum(temp * tf.stop_gradient(kl_coeff_i), axis=[1])
         else:
             loss = tf.math.reduce_sum(
                 tf.convert_to_tensor(kl_per_group, dtype=tf.float32), axis=[0]
