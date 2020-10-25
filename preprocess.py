@@ -26,7 +26,7 @@ class Preprocess(tf.keras.Model):
         self.mult = mult
 
     def call(self, inputs):
-        return self.pre_process(inputs)
+        return self.pre_process(2 * inputs - 1)
 
 
 class SkipScaler(tf.keras.Model):
