@@ -41,42 +41,52 @@ def save_reconstructions_to_tensorboard(epoch, model, test_data:tf.data.Dataset,
         tf.summary.image("test_reconstruction", comparison, step=epoch)
 
 
-def evaluate_model(epoch, model, test_data, metrics_logger, batch_size):
+def evaluate_model(epoch, model, test_data, metrics_logger, batch_size, n_attempts=1000):
     # PPL
     # slerp, slerp_perturbed = e.perceptual_path_length_init()
     # images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
     # TODO: Handle entire dataset
-    test_samples, _ = next(test_data.as_numpy_iterator())
-    test_samples = tf.convert_to_tensor(test_samples)
+    # test_samples, _ = next(test_data.as_numpy_iterator())
+    # test_samples = tf.convert_to_tensor(test_samples)
     with metrics_logger.as_default():
         # Negative log-likelihood
-        # nll = neg_log_likelihood(model, test_data)
-        # tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
+        nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
+        tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
         for temperature in [0.7, 0.8, 0.9, 1.0]:
             # TODO: Handle batches, perform 1000 attempts and average
-            generated_images, last_s, z1, z2 = model.sample(
-                temperature=temperature, n_samples=batch_size
-            )
-            # PPL
-            slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
-            images1, images2 = (
-                model.sample_with_z(slerp, last_s),
-                model.sample_with_z(slerp_perturbed, last_s),
-            )
-            ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-            ppl = None
-            # PR
-            precision, recall = precision_recall(generated_images, test_samples)
-            # FID
-            fid = tf.reduce_mean(fid_score(generated_images, test_samples))
-            tf.summary.scalar(f"t={temperature}/ppl", ppl, step=epoch)
-            tf.summary.scalar(f"t={temperature}/precision", precision, step=epoch)
-            tf.summary.scalar(f"t={temperature}/recall", recall, step=epoch)
-            tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
+            temperature_scores = tf.convert_to_tensor([0., 0., 0., 0.])
+            for attempt in range(n_attempts):
+                attempt_scores = tf.convert_to_tensor([0., 0., 0., 0.])
+                for test_batch, _ in test_data:
+                    generated_images, last_s, z1, z2 = model.sample(
+                        temperature=temperature, n_samples=batch_size
+                    )
+                    # PPL
+                    slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+                    images1, images2 = (
+                        model.sample_with_z(slerp, last_s),
+                        model.sample_with_z(slerp_perturbed, last_s),
+                    )
+                    ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+                    attempt_scores[0] += ppl
+                    ppl = None
+                    # PR
+                    precision, recall = precision_recall(generated_images, test_batch)
+                    attempt_scores[1] += precision
+                    attempt_scores[2] += recall
+                    # FID
+                    fid = tf.reduce_mean(fid_score(generated_images, test_batch))
+                    attempt_scores[3] += fid
+                temperature_scores = attempt_scores / len(test_data) + temperature_scores
+            temperature_scores = temperature_scores / n_attempts
+            tf.summary.scalar(f"t={temperature}/ppl", temperature_scores[0], step=epoch)
+            tf.summary.scalar(f"t={temperature}/precision", temperature_scores[1], step=epoch)
+            tf.summary.scalar(f"t={temperature}/recall", temperature_scores[2], step=epoch)
+            tf.summary.scalar(f"t={temperature}/fid", temperature_scores[3], step=epoch)
+                
 
 
-def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset):
-    n_attempts = 10
+def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
     nll = 0
     for batch, _ in test_data:
         batch_logs = []
