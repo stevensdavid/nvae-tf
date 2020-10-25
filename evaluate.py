@@ -1,4 +1,5 @@
 
+from fid_utils import calculate_fid_given_paths
 from models import NVAE
 from util import tile_images
 import tensorflow as tf
@@ -8,6 +9,9 @@ import scipy.linalg as scalg
 import precision_recall as prec_rec
 import perceptual_path_length as ppl
 from tensorflow_probability import distributions
+import os
+import shutil
+import uuid
 
 
 def save_samples_to_tensorboard(epoch, model, image_logger):
@@ -115,6 +119,37 @@ def fid_score(images1, images2):
     dotp = sigma1.dot(sigma2)
     covmean = scalg.sqrtm(dotp)
     return np.sum((mu1 - mu2) ** 2.0) + np.trace(sigma1 + sigma2 - 2.0 * (covmean.real))
+
+
+def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size):
+    dataset_dir = os.path.join("images", dataset_name, "actual")
+    output_dir = os.path.join("images", dataset_name, "generated")
+    os.makedirs(dataset_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+    if not os.listdir(dataset_dir):
+        # We need to save the source images to the directory
+        print(f"[FID] Saving {dataset_name} to disk.")
+        for image_batch in dataset:
+            save_images_to_dir(image_batch, dataset_dir)
+    for filename in os.listdir(output_dir):
+        # Delete all old generated images
+        os.remove(os.path.join(output_dir, filename))
+    # Recommended by FID author
+    sample_size = 10000
+    print("[FID] Generating samples")
+    for image_batch in range(sample_size // batch_size):
+        images, *_ = model.sample(n_samples=batch_size, return_mean=False)
+        save_images_to_dir(images, output_dir)
+    os.makedirs("fid", exist_ok=True)
+    print("[FID] Calculating FID")
+    fid_value = calculate_fid_given_paths([dataset_dir, output_dir], inception_path="fid")
+    return fid_value
+
+
+def save_images_to_dir(images, dir):
+    for image in images:
+        encoded = tf.io.encode_png(image)
+        tf.io.write_file(os.path.join(dir, f"{uuid.uuid4()}.png"), encoded)
 
 
 # Evaluates the PR of images1 in reference to images2 using NVIDIAs implementation.

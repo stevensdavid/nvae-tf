@@ -134,7 +134,7 @@ class NVAE(tf.keras.Model):
             "bn_loss": bn_loss,
         }
 
-    def sample(self, n_samples=16, temperature=1.0):
+    def sample(self, n_samples=16, temperature=1.0, return_mean=True):
         s = tf.expand_dims(self.decoder.h, 0)
         s = tf.tile(s, [n_samples, 1, 1, 1])
         z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
@@ -172,7 +172,10 @@ class NVAE(tf.keras.Model):
         distribution = distributions.Bernoulli(
             logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
         )
-        images = distribution.mean()
+        if return_mean:
+            images = distribution.mean()
+        else:
+            images = distribution.sample()
         z1 = self.decoder.sampler.sample(mu, sigma)
         z2 = self.decoder.sampler.sample(mu, sigma)
         # return images and mu, sigma, s used for sampling last hierarchical z in turn enabling sampling of images
