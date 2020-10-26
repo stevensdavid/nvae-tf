@@ -76,11 +76,11 @@ class NVAE(tf.keras.Model):
             n_channels_decoder=n_decoder_channels,
         )
         # Updated at start of each epoch
-        self.epoch = tf.Variable(0)
+        self.epoch = 0
         self.total_epochs = total_epochs
         self.step_based_warmup = step_based_warmup
         # Updated for each gradient pass, training step
-        self.steps = tf.Variable(0)
+        self.steps = 0
 
     def call(self, inputs):
         x = self.preprocess(inputs)

@@ -64,6 +64,7 @@ def main(args):
     model.compile(optimizer=adamax, run_eagerly=True)
     if args.resume_from > 0:
         model.load_weights(checkpoint_path(args.resume_from))
+        model.steps = args.resume_from * args.batch_size
 
     image_logdir = os.path.join(args.tensorboard_log_dir, "images")
     image_logger = tf.summary.create_file_writer(image_logdir)

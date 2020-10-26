@@ -51,9 +51,7 @@ class Decoder(tf.keras.Model):
                 )
                 mult /= scale_factor
         self.mult = mult
-        self.z0_shape = tf.Variable(
-            tf.convert_to_tensor([input_shape[1], input_shape[2], n_latent_per_group])
-        )
+        self.z0_shape = tf.convert_to_tensor([input_shape[1], input_shape[2], n_latent_per_group], dtype=tf.int32)
         h_shape = tf.convert_to_tensor(
             [input_shape[1], input_shape[2], self.n_decoder_channels], dtype=tf.int32
         )
