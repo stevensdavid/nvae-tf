@@ -166,7 +166,7 @@ def save_images_to_dir(images, dir):
 
 # Evaluates the PR of images1 in reference to images2 using NVIDIAs implementation.
 def precision_recall(images1, images2):
-    act1, act2 = latent_activations(images1, images2, "IV3")
+    act1, act2 = latent_activations(images1, images2, "VGG")
     # tf.compat.v1.disable_eager_execution()
     pr = prec_rec.knn_precision_recall_features(act1, act2)
     # tf.compat.v1.enable_eager_execution()
