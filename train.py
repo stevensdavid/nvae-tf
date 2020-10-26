@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.keras import callbacks
 import random
 import numpy as np
+import pickle
 
 
 def main(args):
@@ -32,6 +33,12 @@ def main(args):
         train_data = train_data.take(4)  # DEBUG OPTION
         test_data = test_data.take(4)
     batches_per_epoch = len(train_data)
+
+    def checkpoint_path(epoch):
+        return os.path.join(args.model_save_dir, f"epoch_{epoch}")
+
+    sample_batch, sample_labels = next(train_data.as_numpy_iterator())
+
     model = NVAE(
         n_encoder_channels=args.n_encoder_channels,
         n_decoder_channels=args.n_decoder_channels,
@@ -48,16 +55,15 @@ def main(args):
         total_epochs=args.epochs,
         n_total_iterations=len(train_data) * args.epochs,  # for balance kl
         step_based_warmup=args.step_based_warmup,
+        input_shape=tf.convert_to_tensor(sample_batch.shape, dtype=float),
     )
-    if args.resume_from > 0:
-        model.load_weights(os.path.join(args.model_save_dir, f"{args.resume_from}"))
-        # best estimate for step is epochs * batch_size
-        model.step = args.resume_from * args.batch_size
     lr_schedule = tf.keras.experimental.CosineDecay(
         initial_learning_rate=0.001, decay_steps=args.epochs * batches_per_epoch
     )
     adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
     model.compile(optimizer=adamax, run_eagerly=True)
+    if args.resume_from > 0:
+        model.load_weights(checkpoint_path(args.resume_from))
 
     image_logdir = os.path.join(args.tensorboard_log_dir, "images")
     image_logger = tf.summary.create_file_writer(image_logdir)
@@ -68,15 +74,13 @@ def main(args):
         if epoch % args.sample_frequency == 0:
             save_samples_to_tensorboard(epoch, model, image_logger)
             save_reconstructions_to_tensorboard(epoch, model, test_data, image_logger)
+        if epoch % args.model_save_frequency == 0:
+            model.save_weights(checkpoint_path(epoch))
         # TODO: evaluate is buggy
         # if epoch % args.evaluate_frequency == 0:
         #     evaluate_model(epoch, model, test_data, metrics_logger, args.batch_size)
 
     training_callbacks = [
-        callbacks.ModelCheckpoint(
-            filepath=os.path.join(args.model_save_dir, "{epoch}"),
-            save_freq=args.model_save_frequency * batches_per_epoch,
-        ),
         callbacks.LambdaCallback(
             on_epoch_begin=model.on_epoch_begin, on_epoch_end=on_epoch_end,
         ),
@@ -94,15 +98,12 @@ def main(args):
 
     model.fit(
         train_data,
-        # validation_data=test_data,
-        # validation_freq=args.log_frequency,
         epochs=args.epochs,
         callbacks=training_callbacks,
         initial_epoch=args.resume_from,
-        verbose=1 if args.debug else 2,
+        verbose=1 if args.debug or args.verbose else 2,
     )
-    # Statement crashes due to eager execution. Use final checkpoint instead.
-    # model.save(os.path.join(args.model_save_dir, "final.tf"), save_format="tf")
+    model.save_weights(checkpoint_path("final"))
 
 
 def parse_args():
@@ -188,6 +189,7 @@ def parse_args():
     parser.add_argument(
         "--debug", action="store_true", help="Use only first two batches of data"
     )
+    parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
         "--model_save_dir",
         type=str,

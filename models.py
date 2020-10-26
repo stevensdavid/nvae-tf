@@ -31,12 +31,13 @@ class NVAE(tf.keras.Model):
         total_epochs,
         n_total_iterations,
         step_based_warmup,
+        input_shape,
         **kwargs
     ):
         super().__init__(**kwargs)
         self.sr_lambda = sr_lambda
         self.preprocess = Preprocess(
-            n_encoder_channels, n_preprocess_blocks, n_preprocess_cells, scale_factor
+            n_encoder_channels, n_preprocess_blocks, n_preprocess_cells, scale_factor, input_shape
         )
         self.n_latent_per_group = n_latent_per_group
         self.n_latent_scales = n_latent_scales
@@ -53,6 +54,7 @@ class NVAE(tf.keras.Model):
             n_groups_per_scale=n_groups_per_scale,
             mult=mult,
             scale_factor=scale_factor,
+            input_shape=self.preprocess.output_shape_,
         )
         mult = self.encoder.mult
         self.decoder = Decoder(
@@ -63,6 +65,7 @@ class NVAE(tf.keras.Model):
             n_groups_per_scale=list(reversed(n_groups_per_scale)),
             mult=mult,
             scale_factor=scale_factor,
+            input_shape=self.encoder.output_shape_,
         )
         mult = self.decoder.mult
         self.postprocess = Postprocess(
@@ -72,26 +75,16 @@ class NVAE(tf.keras.Model):
             mult=mult,
             n_channels_decoder=n_decoder_channels,
         )
-        # lists wrapped to avoid checkpointing
-        self.u = []
-        self.v = []
-        self.initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
         # Updated at start of each epoch
-        self.epoch = 0
+        self.epoch = tf.Variable(0)
         self.total_epochs = total_epochs
         self.step_based_warmup = step_based_warmup
         # Updated for each gradient pass, training step
-        self.steps = 0
-        self.image_dim: int = None
-
-    def build(self, input_shape):
-        batch_size, h, w, c = input_shape
-        self.image_dim = h
+        self.steps = tf.Variable(0)
 
     def call(self, inputs):
         x = self.preprocess(inputs)
         enc_dec_combiners, final_x = self.encoder(x)
-        self.final_x = final_x
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
         reconstruction, z_params, log_p, log_q = self.decoder(

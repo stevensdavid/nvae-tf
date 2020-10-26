@@ -26,6 +26,7 @@ class Encoder(tf.keras.Model):
         n_groups_per_scale: List[int],
         mult: int,
         scale_factor: int,
+        input_shape,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -53,6 +54,7 @@ class Encoder(tf.keras.Model):
                     )
                 )
                 mult *= scale_factor
+                input_shape *= [1, 1/scale_factor, 1/scale_factor, scale_factor]
         self.final_enc = Sequential(
             [
                 layers.ELU(),
@@ -63,6 +65,7 @@ class Encoder(tf.keras.Model):
             ]
         )
         self.mult = mult
+        self.output_shape_ = input_shape
 
     def call(self, x):
         # 8x26x26x32
