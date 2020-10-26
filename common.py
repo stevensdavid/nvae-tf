@@ -40,7 +40,7 @@ class Sampler(tf.keras.Model):
                     # NVLabs use padding 1 here?
                     SpectralNormalization(
                         layers.Conv2D(
-                            scale_factor * self.n_latent_per_group,
+                            2 * self.n_latent_per_group,
                             kernel_size=(3, 3),
                             padding="same",
                         )
@@ -56,7 +56,7 @@ class Sampler(tf.keras.Model):
                     sampler.add(
                         SpectralNormalization(
                             layers.Conv2D(
-                                scale_factor * self.n_latent_per_group,
+                                2 * self.n_latent_per_group,
                                 kernel_size=(1, 1),
                             )
                         )
