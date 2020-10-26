@@ -103,6 +103,8 @@ def main(args):
         callbacks=training_callbacks,
         initial_epoch=args.resume_from,
         verbose=1 if args.debug or args.verbose else 2,
+        workers=args.workers,
+        use_multiprocessing=args.multiprocessing,
     )
     model.save_weights(checkpoint_path("final"))
 
@@ -240,6 +242,8 @@ def parse_args():
         action="store_true",
         help="Base warmup on batches trained instead of epochs",
     )
+    parser.add_argument("--workers", default=1)
+    parser.add_argument("--multiprocessing", action="store_true")
     parser.add_argument(
         "--seed", type=int, default=1, help="Random seed to use for initialization"
     )
