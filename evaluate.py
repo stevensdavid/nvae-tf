@@ -1,6 +1,7 @@
+from tensorflow.python.keras.engine.training import Model
 from fid_utils import calculate_fid_given_paths
 from models import NVAE
-from util import tile_images, load_pkl
+from util import sample_to_dir, save_images_to_dir, tile_images, load_pkl
 import tensorflow as tf
 import numpy as np
 import skimage.transform
@@ -11,6 +12,21 @@ from tensorflow_probability import distributions
 import os
 import shutil
 import uuid
+from dataclasses import dataclass
+from typing import List
+
+@dataclass
+class Metrics:
+    temperature: float
+    fid: float
+    ppl: float
+    precision: float
+    recall: float
+
+@dataclass
+class ModelEvaluation:
+    nll: float
+    sample_metrics: List[Metrics]
 
 
 def save_samples_to_tensorboard(epoch, model, image_logger):
@@ -50,16 +66,18 @@ def save_reconstructions_to_tensorboard(
 
 def evaluate_model(
     epoch, model, test_data, metrics_logger, batch_size, n_attempts=1000
-):
+) -> ModelEvaluation:
     # PPL
     # slerp, slerp_perturbed = e.perceptual_path_length_init()
     # images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
     # TODO: Handle entire dataset
     # test_samples, _ = next(test_data.as_numpy_iterator())
     # test_samples = tf.convert_to_tensor(test_samples)
+    evaluation = ModelEvaluation(nll=None, sample_metrics=[])
     with metrics_logger.as_default():
         # Negative log-likelihood
         nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
+        evaluation.nll = nll
         tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
         for temperature in [0.7, 0.8, 0.9, 1.0]:
             # TODO: Handle batches, perform 1000 attempts and average
@@ -96,6 +114,8 @@ def evaluate_model(
                 f"t={temperature}/recall", temperature_scores[2], step=epoch
             )
             tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
+            evaluation.sample_metrics.append(Metrics(temperature=temperature, fid=fid, ppl=temperature_scores[0], precision=temperature_scores[1], recall=temperature_scores[2]))
+
 
 
 def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
@@ -145,11 +165,7 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
     # Recommended by FID author
     sample_size = 10000
     print("[FID] Generating samples")
-    for image_batch in range(sample_size // batch_size):
-        images, *_ = model.sample(
-            n_samples=batch_size, return_mean=False, temperature=temperature
-        )
-        save_images_to_dir(images, output_dir)
+    sample_to_dir(model, batch_size, sample_size, temperature, output_dir)
     os.makedirs("fid", exist_ok=True)
     print("[FID] Calculating FID")
     fid_value = calculate_fid_given_paths(
@@ -158,10 +174,6 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
     return fid_value
 
 
-def save_images_to_dir(images, dir):
-    for image in images:
-        encoded = tf.io.encode_png(image)
-        tf.io.write_file(os.path.join(dir, f"{uuid.uuid4()}.png"), encoded)
 
 
 # Evaluates the PR of images1 in reference to images2 using NVIDIAs implementation.

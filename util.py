@@ -22,6 +22,20 @@ def tile_images(images):
     return tf.reshape(images, [n * height, n * width, channels])
 
 
+def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
+    for image_batch in range(sample_size // batch_size):
+        images, *_ = model.sample(
+            n_samples=batch_size, return_mean=False, temperature=temperature
+        )
+        save_images_to_dir(images, output_dir)
+
+
+def save_images_to_dir(images, dir):
+    for image in images:
+        encoded = tf.io.encode_png(image)
+        tf.io.write_file(os.path.join(dir, f"{uuid.uuid4()}.png"), encoded)
+
+
 def calculate_log_p(z, mu, sigma):
     normalized_z = (z - mu) / sigma
     log_p = -0.5 * normalized_z * normalized_z - 0.5 * tf.math.log(2*tf.constant(math.pi)) - tf.math.log(sigma)
