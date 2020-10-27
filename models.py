@@ -147,15 +147,11 @@ class NVAE(tf.keras.Model):
         for layer in self.decoder.groups:
             if isinstance(layer, DecoderSampleCombiner):
                 if decoder_index > 0:
-                    # z, _ = self.decoder.sampler(s, decoder_index)
                     mu, log_sigma = self.decoder.sampler.get_params(
                         self.decoder.sampler.dec_sampler, decoder_index, s
                     )
                     mu = softclamp5(mu)
                     sigma = tf.math.exp(softclamp5(log_sigma)) + 1e-2
-                    # TODO: This uses the relative residual distribution offset
-                    #       as an absolute distribution. NVLabs does this as well.
-                    #       Investigate correctness.
                     z = self.decoder.sampler.sample(mu, sigma)
                 last_s = s
                 s = layer(s, z)
