@@ -73,10 +73,12 @@ class Sampler(tf.keras.Model):
         mu, log_sigma = [tf.squeeze(p) for p in (mu, log_sigma)]
         return mu, log_sigma
 
-    def call(self, prior, z_idx) -> Tuple[tf.Tensor, DistributionParams]:
+    def call(self, prior, z_idx, enc_prior=None) -> Tuple[tf.Tensor, DistributionParams]:
         # Get encoder offsets
+        if enc_prior is None:
+            enc_prior = prior
         enc_mu_offset, enc_log_sigma_offset = self.get_params(
-            self.enc_sampler, z_idx, prior
+            self.enc_sampler, z_idx, enc_prior
         )
         if z_idx == 0:
             # Prior is standard normal distribution

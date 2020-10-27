@@ -76,8 +76,10 @@ class Decoder(tf.keras.Model):
         combine_idx = 0
         for group in self.groups[1:]:
             if isinstance(group, DecoderSampleCombiner):
-                prior = enc_dec_combiners[combine_idx](x)
-                z_sample, params = self.sampler(prior, combine_idx + 1)
+                enc_prior = enc_dec_combiners[combine_idx](x)
+                z_sample, params = self.sampler(
+                    prior, z_idx=combine_idx + 1, enc_prior=enc_prior
+                )
                 all_log_q.append(
                     calculate_log_p(z_sample, params.enc_mu, params.enc_sigma)
                 )
