@@ -1,4 +1,6 @@
 from argparse import ArgumentError, ArgumentParser
+from random import choice
+from util import sample_to_dir
 from evaluate import save_reconstructions_to_tensorboard
 import os
 import tensorflow as tf
@@ -6,6 +8,77 @@ from tensorflow.keras import callbacks
 import random
 import numpy as np
 import pickle
+
+
+def checkpoint_path(model_save_dir, epoch):
+    return os.path.join(model_save_dir, f"epoch_{epoch}")
+
+
+def train(args, model, train_data, test_data):
+    from evaluate import save_samples_to_tensorboard
+
+    image_logdir = os.path.join(args.tensorboard_log_dir, "images")
+    image_logger = tf.summary.create_file_writer(image_logdir)
+
+    def on_epoch_end(epoch, logs=None):
+        if epoch % args.sample_frequency == 0:
+            save_samples_to_tensorboard(epoch, model, image_logger)
+            save_reconstructions_to_tensorboard(epoch, model, test_data, image_logger)
+        if epoch % args.model_save_frequency == 0:
+            model.save_weights(checkpoint_path(args.model_save_dir, epoch))
+
+    training_callbacks = [
+        callbacks.LambdaCallback(
+            on_epoch_begin=model.on_epoch_begin, on_epoch_end=on_epoch_end,
+        ),
+    ]
+    if args.patience:
+        training_callbacks.append(
+            callbacks.EarlyStopping(patience=args.patience, restore_best_weights=True)
+        )
+    if args.tensorboard_log_dir:
+        training_callbacks.append(
+            callbacks.TensorBoard(
+                log_dir=args.tensorboard_log_dir, update_freq="epoch",
+            )
+        )
+
+    model.fit(
+        train_data,
+        epochs=args.epochs,
+        callbacks=training_callbacks,
+        initial_epoch=args.resume_from,
+        verbose=1 if args.debug or args.verbose else 2,
+        workers=args.workers,
+        use_multiprocessing=args.multiprocessing,
+    )
+    model.save_weights(checkpoint_path(args.model_save_dir, "final"))
+
+
+def test(args, model, train_data, test_data):
+    from evaluate import evaluate_model, Metrics
+
+    metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
+    metrics_logger = tf.summary.create_file_writer(metrics_logdir)
+    evaluation = evaluate_model(
+        epoch=args.resume_from,
+        model=model,
+        test_data=test_data,
+        metrics_logger=metrics_logger,
+        batch_size=args.batch_size,
+        n_attempts=1,
+    )
+    print(f"Negative log likelihood: {evaluation.nll}")
+    import pandas as pd
+    
+    metrics = pd.DataFrame(evaluation.sample_metrics, columns=[x.name for x in Metrics.fields()], index="temperature")
+    print(metrics.to_latex())
+
+
+def sample(args, model, n_samples=100):
+    for t in [.7, .8, .9, 1]:
+        output_dir = os.path.join(args.sample_dir, f"t_{t:.1f}")
+        sample_to_dir(model, args.batch_size, n_samples, t, output_dir)
 
 
 def main(args):
@@ -21,7 +94,6 @@ def main(args):
     np.random.seed(args.seed)
     # Imported here so seed can be set before imports
     from models import NVAE
-    from evaluate import evaluate_model, save_samples_to_tensorboard
 
     if args.dataset == "mnist":
         from datasets import load_mnist
@@ -33,9 +105,6 @@ def main(args):
         train_data = train_data.take(4)  # DEBUG OPTION
         test_data = test_data.take(4)
     batches_per_epoch = len(train_data)
-
-    def checkpoint_path(epoch):
-        return os.path.join(args.model_save_dir, f"epoch_{epoch}")
 
     sample_batch, sample_labels = next(train_data.as_numpy_iterator())
 
@@ -66,47 +135,12 @@ def main(args):
         model.load_weights(checkpoint_path(args.resume_from))
         model.steps = args.resume_from * args.batch_size
 
-    image_logdir = os.path.join(args.tensorboard_log_dir, "images")
-    image_logger = tf.summary.create_file_writer(image_logdir)
-    metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
-    metrics_logger = tf.summary.create_file_writer(metrics_logdir)
-
-    def on_epoch_end(epoch, logs=None):
-        if epoch % args.sample_frequency == 0:
-            save_samples_to_tensorboard(epoch, model, image_logger)
-            save_reconstructions_to_tensorboard(epoch, model, test_data, image_logger)
-        if epoch % args.model_save_frequency == 0:
-            model.save_weights(checkpoint_path(epoch))
-        # TODO: evaluate is buggy
-        # if epoch % args.evaluate_frequency == 0:
-        #     evaluate_model(epoch, model, test_data, metrics_logger, args.batch_size)
-
-    training_callbacks = [
-        callbacks.LambdaCallback(
-            on_epoch_begin=model.on_epoch_begin, on_epoch_end=on_epoch_end,
-        ),
-    ]
-    if args.patience:
-        training_callbacks.append(
-            callbacks.EarlyStopping(patience=args.patience, restore_best_weights=True)
-        )
-    if args.tensorboard_log_dir:
-        training_callbacks.append(
-            callbacks.TensorBoard(
-                log_dir=args.tensorboard_log_dir, update_freq="epoch",
-            )
-        )
-
-    model.fit(
-        train_data,
-        epochs=args.epochs,
-        callbacks=training_callbacks,
-        initial_epoch=args.resume_from,
-        verbose=1 if args.debug or args.verbose else 2,
-        workers=args.workers,
-        use_multiprocessing=args.multiprocessing,
-    )
-    model.save_weights(checkpoint_path("final"))
+    if args.mode == "train":
+        train(args, model, train_data, test_data)
+    elif args.mode == "test":
+        test(args, model, train_data, test_data)
+    elif args.mode == "sample":
+        sample(args, model)
 
 
 def parse_args():
@@ -115,6 +149,7 @@ def parse_args():
         "--epochs", type=int, default=400, help="Number of epochs to train"
     )
     parser.add_argument("--batch_size", default=144, type=int)
+    parser.add_argument("--mode", type=str, choices=["train", "test", "sample"])
     # Hyperparameters
     parser.add_argument(
         "--n_encoder_channels",
@@ -198,6 +233,12 @@ def parse_args():
         type=str,
         default="models",
         help="Directory to save models in",
+    )
+    parser.add_argument(
+        "--sample_dir",
+        type=str,
+        default="results",
+        help="Directory to save sampled images in. Only applicable in sample mode.",
     )
     parser.add_argument(
         "--resume_from", type=int, default=0, help="Epoch to resume training from"
