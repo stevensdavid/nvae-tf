@@ -31,6 +31,8 @@ def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
 
 
 def save_images_to_dir(images, dir):
+    if images.dtype.is_floating:
+        images = tf.cast(images * 255, tf.uint8)
     for image in images:
         encoded = tf.io.encode_png(image)
         tf.io.write_file(os.path.join(dir, f"{uuid.uuid4()}.png"), encoded)
