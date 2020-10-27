@@ -55,7 +55,7 @@ def train(args, model, train_data, test_data):
     model.save_weights(checkpoint_path(args.model_save_dir, "final"))
 
 
-def test(args, model, train_data, test_data):
+def test(args, model, test_data):
     from evaluate import evaluate_model, Metrics
 
     metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
@@ -70,19 +70,24 @@ def test(args, model, train_data, test_data):
     )
     print(f"Negative log likelihood: {evaluation.nll}")
     import pandas as pd
-    
-    metrics = pd.DataFrame(evaluation.sample_metrics, columns=[x.name for x in Metrics.fields()], index="temperature")
+
+    metrics = pd.DataFrame(
+        evaluation.sample_metrics,
+        columns=[x.name for x in Metrics.fields()],
+        index="temperature",
+    )
     print(metrics.to_latex())
 
 
-def sample(args, model, n_samples=100):
-    for t in [.7, .8, .9, 1]:
+def sample(args, model):
+    for t in [0.7, 0.8, 0.9, 1]:
         output_dir = os.path.join(args.sample_dir, f"t_{t:.1f}")
-        sample_to_dir(model, args.batch_size, n_samples, t, output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        sample_to_dir(model, args.batch_size, args.n_samples, t, output_dir)
 
 
 def main(args):
-    print(f"Training with args: {args}")
+    print(f"Args: {args}")
     if args.cpu:
         tf.config.experimental.set_visible_devices([], "GPU")
     else:
@@ -138,7 +143,7 @@ def main(args):
     if args.mode == "train":
         train(args, model, train_data, test_data)
     elif args.mode == "test":
-        test(args, model, train_data, test_data)
+        test(args, model, test_data)
     elif args.mode == "sample":
         sample(args, model)
 
@@ -226,6 +231,12 @@ def parse_args():
     parser.add_argument("--cpu", action="store_true", help="Enforce CPU training")
     parser.add_argument(
         "--debug", action="store_true", help="Use only first two batches of data"
+    )
+    parser.add_argument(
+        "--n_samples",
+        type=int,
+        default=10,
+        help="Number of samples to generate in sample mode",
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
