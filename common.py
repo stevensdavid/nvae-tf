@@ -98,7 +98,7 @@ class Sampler(tf.keras.Model):
             tf.math.exp(softclamp5(raw_dec_log_sigma + enc_log_sigma_offset)) + 1e-2
         )
         params = DistributionParams(enc_mu, enc_sigma, dec_mu, dec_sigma)
-        z = self.sample(dec_mu, dec_sigma)
+        z = self.sample(enc_mu, enc_sigma)
         return z, params
 
 
