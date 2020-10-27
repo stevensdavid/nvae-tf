@@ -56,8 +56,7 @@ class Sampler(tf.keras.Model):
                     sampler.add(
                         SpectralNormalization(
                             layers.Conv2D(
-                                2 * self.n_latent_per_group,
-                                kernel_size=(1, 1),
+                                2 * self.n_latent_per_group, kernel_size=(1, 1),
                             )
                         )
                     )
@@ -76,28 +75,27 @@ class Sampler(tf.keras.Model):
 
     def call(self, prior, z_idx) -> Tuple[tf.Tensor, DistributionParams]:
         # Get encoder offsets
-        enc_mu_offset, enc_log_sigma_offset = self.get_params(self.enc_sampler, z_idx, prior)
+        enc_mu_offset, enc_log_sigma_offset = self.get_params(
+            self.enc_sampler, z_idx, prior
+        )
         if z_idx == 0:
             # Prior is standard normal distribution
             enc_mu = softclamp5(enc_mu_offset)
             enc_sigma = tf.math.exp(softclamp5(enc_log_sigma_offset))
             z = self.sample(enc_mu, enc_sigma)
             params = DistributionParams(
-                enc_mu,
-                enc_sigma,
-                tf.zeros_like(enc_mu),
-                tf.ones_like(enc_sigma),
+                enc_mu, enc_sigma, tf.zeros_like(enc_mu), tf.ones_like(enc_sigma),
             )
             return z, params
         # Get decoder parameters
         raw_dec_mu, raw_dec_log_sigma = self.get_params(self.dec_sampler, z_idx, prior)
-        dec_mu  = softclamp5(raw_dec_mu)
+        dec_mu = softclamp5(raw_dec_mu)
         dec_sigma = tf.math.exp(softclamp5(raw_dec_log_sigma)) + 1e-2
         enc_mu = softclamp5(enc_mu_offset + raw_dec_mu)
-        enc_sigma = tf.math.exp(softclamp5(raw_dec_log_sigma + enc_log_sigma_offset)) + 1e-2
-        params = DistributionParams(
-            enc_mu, enc_sigma, dec_mu, dec_sigma
+        enc_sigma = (
+            tf.math.exp(softclamp5(raw_dec_log_sigma + enc_log_sigma_offset)) + 1e-2
         )
+        params = DistributionParams(enc_mu, enc_sigma, dec_mu, dec_sigma)
         z = self.sample(dec_mu, dec_sigma)
         return z, params
 

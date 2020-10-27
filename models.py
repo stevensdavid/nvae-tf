@@ -37,7 +37,11 @@ class NVAE(tf.keras.Model):
         super().__init__(**kwargs)
         self.sr_lambda = sr_lambda
         self.preprocess = Preprocess(
-            n_encoder_channels, n_preprocess_blocks, n_preprocess_cells, scale_factor, input_shape
+            n_encoder_channels,
+            n_preprocess_blocks,
+            n_preprocess_cells,
+            scale_factor,
+            input_shape,
         )
         self.n_latent_per_group = n_latent_per_group
         self.n_latent_scales = n_latent_scales
@@ -209,7 +213,7 @@ class NVAE(tf.keras.Model):
             kl_coeff_i = kl_coeff_i / tf.reduce_mean(kl_coeff_i, 0, keepdims=True)
             temp = tf.stack(kl_all, 1)
             # We stop gradient through kl_coeff_i because we are only interested
-            # in changing the magnitude of the loss, not the direction of the 
+            # in changing the magnitude of the loss, not the direction of the
             # gradient.
             loss = tf.reduce_sum(temp * tf.stop_gradient(kl_coeff_i), axis=[1])
         else:

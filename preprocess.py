@@ -6,7 +6,14 @@ from tensorflow_addons.layers import SpectralNormalization
 
 class Preprocess(tf.keras.Model):
     def __init__(
-        self, n_encoder_channels, n_blocks, n_cells, scale_factor, input_shape, mult=1, **kwargs
+        self,
+        n_encoder_channels,
+        n_blocks,
+        n_cells,
+        scale_factor,
+        input_shape,
+        mult=1,
+        **kwargs
     ) -> None:
         super().__init__(**kwargs)
         self.pre_process = Sequential(
@@ -23,7 +30,7 @@ class Preprocess(tf.keras.Model):
             n_channels = mult * n_encoder_channels * scale_factor
             self.pre_process.add(BNSwishConv(2, n_channels, stride=(2, 2)))
             mult *= scale_factor
-            input_shape *= [1, 1/scale_factor, 1/scale_factor, scale_factor]
+            input_shape *= [1, 1 / scale_factor, 1 / scale_factor, scale_factor]
         self.mult = mult
         self.output_shape_ = input_shape
 

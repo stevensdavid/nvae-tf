@@ -42,7 +42,11 @@ def save_images_to_dir(images, dir):
 
 def calculate_log_p(z, mu, sigma):
     normalized_z = (z - mu) / sigma
-    log_p = -0.5 * normalized_z * normalized_z - 0.5 * tf.math.log(2*tf.constant(math.pi)) - tf.math.log(sigma)
+    log_p = (
+        -0.5 * normalized_z * normalized_z
+        - 0.5 * tf.math.log(2 * tf.constant(math.pi))
+        - tf.math.log(sigma)
+    )
     return log_p
 
 

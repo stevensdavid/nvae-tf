@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import List
 from tqdm import tqdm
 
+
 @dataclass
 class Metrics:
     temperature: float
@@ -21,6 +22,7 @@ class Metrics:
     ppl: float
     precision: float
     recall: float
+
 
 @dataclass
 class ModelEvaluation:
@@ -74,9 +76,17 @@ def evaluate_model(
     # test_samples = tf.convert_to_tensor(test_samples)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
     with metrics_logger.as_default():
-        for temperature in tqdm([0.7, 0.8, 0.9, 1.0], desc="Temperature based tests (PPL/PR)", total=4):
+        for temperature in tqdm(
+            [0.7, 0.8, 0.9, 1.0], desc="Temperature based tests (PPL/PR)", total=4
+        ):
             # TODO: Handle batches, perform 1000 attempts and average
-            fid = evaluate_fid(model, test_data, "mnist", batch_size=batch_size, temperature=temperature)
+            fid = evaluate_fid(
+                model,
+                test_data,
+                "mnist",
+                batch_size=batch_size,
+                temperature=temperature,
+            )
             temperature_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
             for attempt in tqdm(range(n_attempts), desc="Sample attempt (PPL/PR)"):
                 generated_images, last_s, z1, z2 = model.sample(
@@ -85,7 +95,9 @@ def evaluate_model(
                 precision, recall = 0, 0
                 for test_batch, _ in test_data:
                     # PR
-                    batch_precision, batch_recall = precision_recall(generated_images, test_batch)
+                    batch_precision, batch_recall = precision_recall(
+                        generated_images, test_batch
+                    )
                     precision += batch_precision.item()
                     recall += batch_recall.item()
                 # PPL
@@ -95,7 +107,11 @@ def evaluate_model(
                     model.sample_with_z(slerp_perturbed, last_s),
                 )
                 ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-                temperature_scores = temperature_scores + [ppl, precision / len(test_data), recall / len(test_data)]
+                temperature_scores = temperature_scores + [
+                    ppl,
+                    precision / len(test_data),
+                    recall / len(test_data),
+                ]
             temperature_scores = temperature_scores / n_attempts
             tf.summary.scalar(f"t={temperature}/ppl", temperature_scores[0], step=epoch)
             tf.summary.scalar(
@@ -105,12 +121,19 @@ def evaluate_model(
                 f"t={temperature}/recall", temperature_scores[2], step=epoch
             )
             tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
-            evaluation.sample_metrics.append(Metrics(temperature=temperature, fid=fid, ppl=temperature_scores[0], precision=temperature_scores[1], recall=temperature_scores[2]))
+            evaluation.sample_metrics.append(
+                Metrics(
+                    temperature=temperature,
+                    fid=fid,
+                    ppl=temperature_scores[0],
+                    precision=temperature_scores[1],
+                    recall=temperature_scores[2],
+                )
+            )
         # Negative log-likelihood
         nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
         evaluation.nll = nll
         tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
-
 
 
 def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
@@ -165,8 +188,6 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
         [dataset_dir, output_dir], inception_path="fid"
     )
     return fid_value
-
-
 
 
 # Evaluates the PR of images1 in reference to images2 using NVIDIAs implementation.
@@ -242,19 +263,20 @@ def resize(images, target_shape=(299, 299, 3)):
 
 # -------For standalone debugging------
 
-def main():
-    #a,b=gen_images(20,0.1,0.1,0,0)
-    #print(a.shape)
-    #p,r=precision_recall(a,b)
-    #print(str(p) + " - " + str(r))
 
-    a,b=gen_images(20,3,3,0,0)
+def main():
+    # a,b=gen_images(20,0.1,0.1,0,0)
+    # print(a.shape)
+    # p,r=precision_recall(a,b)
+    # print(str(p) + " - " + str(r))
+
+    a, b = gen_images(20, 3, 3, 0, 0)
     print(a.shape)
-    p,r=precision_recall(a,b)
+    p, r = precision_recall(a, b)
     print(str(p) + " - " + str(r))
+
 
 if __name__ == "__main__":
     main()
-#-------For standalone debugging------
-
+# -------For standalone debugging------
 

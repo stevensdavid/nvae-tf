@@ -54,7 +54,7 @@ class Encoder(tf.keras.Model):
                     )
                 )
                 mult *= scale_factor
-                input_shape *= [1, 1/scale_factor, 1/scale_factor, scale_factor]
+                input_shape *= [1, 1 / scale_factor, 1 / scale_factor, scale_factor]
         self.final_enc = Sequential(
             [
                 layers.ELU(),
