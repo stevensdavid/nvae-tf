@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 
 from tqdm import tnrange
 
-# MODIFICATIONS: Added tqdm.trange, lines 4 and 434. Port to tf 2.0 on 523
+# MODIFICATIONS: Added progress bars, ported to TF2.0 and support for grayscale.
 #
 # This file contains code from https://github.com/bioinf-jku/TTUR
 # which is Apache 2 licensed.
@@ -408,7 +408,10 @@ def load_image_batch(files):
     Returns:
     -- A numpy array of dimensions (num_images,hi, wi, 3) representing the image pixel values.
     """
-    return np.array([imread(str(fn)).astype(np.float32) for fn in files])
+    images = np.array([imread(str(fn)).astype(np.float32) for fn in files])
+    if len(images.shape) == 3:
+        images = np.stack([images]*3, axis=-1)
+    return images
 
 def get_activations_from_files(files, sess, batch_size=50, verbose=False):
     """Calculates the activations of the pool_3 layer for all images.
@@ -506,6 +509,8 @@ def _handle_path(path, sess, low_profile=False):
             m, s = calculate_activation_statistics_from_files(files, sess)
         else:
             x = np.array([imread(str(fn)).astype(np.float32) for fn in files])
+            if len(x.shape) == 3:
+                x = np.stack([x]*3, axis=-1)
             m, s = calculate_activation_statistics(x, sess)
             del x #clean up memory
     return m, s
@@ -519,9 +524,9 @@ def calculate_fid_given_paths(paths, inception_path, low_profile=False):
         if not os.path.exists(p):
             raise RuntimeError("Invalid path: %s" % p)
 
-    create_inception_graph(str(inception_path))
     with tf.compat.v1.Session() as sess:
-        sess.run(tf.global_variables_initializer())
+        create_inception_graph(str(inception_path))
+        sess.run(tf.compat.v1.global_variables_initializer())
         m1, s1 = _handle_path(paths[0], sess, low_profile=low_profile)
         m2, s2 = _handle_path(paths[1], sess, low_profile=low_profile)
         fid_value = calculate_frechet_distance(m1, s1, m2, s2)

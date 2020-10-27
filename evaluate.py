@@ -64,7 +64,7 @@ def save_reconstructions_to_tensorboard(
 
 
 def evaluate_model(
-    epoch, model, test_data, metrics_logger, batch_size, n_attempts=1000
+    epoch, model, test_data, metrics_logger, batch_size, n_attempts=2
 ) -> ModelEvaluation:
     # PPL
     # slerp, slerp_perturbed = e.perceptual_path_length_init()
@@ -76,11 +76,18 @@ def evaluate_model(
     with metrics_logger.as_default():
         for temperature in tqdm([0.7, 0.8, 0.9, 1.0], desc="Temperature based tests (PPL/PR)", total=4):
             # TODO: Handle batches, perform 1000 attempts and average
+            fid = evaluate_fid(model, test_data, "mnist", batch_size=batch_size, temperature=temperature)
             temperature_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
             for attempt in tqdm(range(n_attempts), desc="Sample attempt (PPL/PR)"):
                 generated_images, last_s, z1, z2 = model.sample(
                     temperature=temperature, n_samples=batch_size
                 )
+                precision, recall = 0, 0
+                for test_batch, _ in test_data:
+                    # PR
+                    batch_precision, batch_recall = precision_recall(generated_images, test_batch)
+                    precision += batch_precision.item()
+                    recall += batch_recall.item()
                 # PPL
                 slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
                 images1, images2 = (
@@ -88,17 +95,7 @@ def evaluate_model(
                     model.sample_with_z(slerp_perturbed, last_s),
                 )
                 ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-                temperature_scores[0] += ppl
-                precision, recall = 0, 0
-                for test_batch, _ in test_data:
-                    ppl = None
-                    # PR
-                    batch_precision, batch_recall = precision_recall(generated_images, test_batch)
-                    precision += batch_precision
-                    recall += batch_recall
-                temperature_scores[1] += precision / len(test_data)
-                temperature_scores[2] += recall / len(test_data)
-            fid = evaluate_fid(model, test_data, "mnist", batch_size=batch_size, temperature=temperature)
+                temperature_scores = temperature_scores + [ppl, precision / len(test_data), recall / len(test_data)]
             temperature_scores = temperature_scores / n_attempts
             tf.summary.scalar(f"t={temperature}/ppl", temperature_scores[0], step=epoch)
             tf.summary.scalar(
@@ -109,6 +106,10 @@ def evaluate_model(
             )
             tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
             evaluation.sample_metrics.append(Metrics(temperature=temperature, fid=fid, ppl=temperature_scores[0], precision=temperature_scores[1], recall=temperature_scores[2]))
+        # Negative log-likelihood
+        nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
+        evaluation.nll = nll
+        tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
 
 
 
@@ -150,14 +151,13 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
     os.makedirs(output_dir, exist_ok=True)
     if not os.listdir(dataset_dir):
         # We need to save the source images to the directory
-        for image_batch in tqdm(dataset, desc="Saving dataset (FID)"):
+        for image_batch, _ in tqdm(dataset, desc="Saving dataset (FID)"):
             save_images_to_dir(image_batch, dataset_dir)
     for filename in os.listdir(output_dir):
         # Delete all old generated images
         os.remove(os.path.join(output_dir, filename))
     # Recommended by FID author
     sample_size = 10000
-    print("[FID] Generating samples")
     sample_to_dir(model, batch_size, sample_size, temperature, output_dir)
     os.makedirs("fid", exist_ok=True)
     print("[FID] Calculating FID")
@@ -173,6 +173,8 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
 def precision_recall(images1, images2):
     act1, act2 = latent_activations(images1, images2, "VGG")
     # tf.compat.v1.disable_eager_execution()
+    # act1 = tf.reshape(act1, (tf.shape(act1)[0], -1))
+    # act2 = tf.reshape(act1, (tf.shape(act2)[0], -1))
     pr = prec_rec.knn_precision_recall_features(act1, act2)
     # tf.compat.v1.enable_eager_execution()
     return pr["precision"], pr["recall"]
@@ -210,7 +212,7 @@ def latent_activations(images1, images2, model_name):
         act1 = tf.convert_to_tensor(model.predict(images1,), dtype=tf.float32)
         act2 = tf.convert_to_tensor(model.predict(images2), dtype=tf.float32)
     elif model_name == "VGG":
-        model = tf.keras.applications.VGG16(include_top=False)
+        model = tf.keras.applications.VGG16(include_top=False, pooling="avg")
         act1 = model(images1)
         act2 = model(images2)
 
@@ -239,7 +241,7 @@ def resize(images, target_shape=(299, 299, 3)):
 
 
 # -------For standalone debugging------
-"""
+
 def main():
     #a,b=gen_images(20,0.1,0.1,0,0)
     #print(a.shape)
@@ -254,5 +256,5 @@ def main():
 if __name__ == "__main__":
     main()
 #-------For standalone debugging------
-"""
+
 
