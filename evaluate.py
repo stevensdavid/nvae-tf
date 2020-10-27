@@ -83,28 +83,27 @@ def evaluate_model(
             # TODO: Handle batches, perform 1000 attempts and average
             temperature_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
             for attempt in range(n_attempts):
-                attempt_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
+                generated_images, last_s, z1, z2 = model.sample(
+                    temperature=temperature, n_samples=batch_size
+                )
+                # PPL
+                slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+                images1, images2 = (
+                    model.sample_with_z(slerp, last_s),
+                    model.sample_with_z(slerp_perturbed, last_s),
+                )
+                ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+                temperature_scores[0] += ppl
+                precision, recall = 0, 0
                 for test_batch, _ in test_data:
-                    generated_images, last_s, z1, z2 = model.sample(
-                        temperature=temperature, n_samples=batch_size
-                    )
-                    # PPL
-                    slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
-                    images1, images2 = (
-                        model.sample_with_z(slerp, last_s),
-                        model.sample_with_z(slerp_perturbed, last_s),
-                    )
-                    ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-                    attempt_scores[0] += ppl
                     ppl = None
                     # PR
-                    precision, recall = precision_recall(generated_images, test_batch)
-                    attempt_scores[1] += precision
-                    attempt_scores[2] += recall
-                temperature_scores = (
-                    attempt_scores / len(test_data) + temperature_scores
-                )
-            fid = evaluate_fid(model, test_data, "mnist", batch_size=50, temperature=temperature)
+                    batch_precision, batch_recall = precision_recall(generated_images, test_batch)
+                    precision += batch_precision
+                    recall += batch_recall
+                temperature_scores[1] += precision / len(test_data)
+                temperature_scores[2] += recall / len(test_data)
+            fid = evaluate_fid(model, test_data, "mnist", batch_size=batch_size, temperature=temperature)
             temperature_scores = temperature_scores / n_attempts
             tf.summary.scalar(f"t={temperature}/ppl", temperature_scores[0], step=epoch)
             tf.summary.scalar(
