@@ -1,7 +1,7 @@
 from tensorflow.python.keras.engine.training import Model
 from fid_utils import calculate_fid_given_paths
 from models import NVAE
-from util import sample_to_dir, save_images_to_dir, tile_images, load_pkl
+from util import sample_to_dir, save_images_to_dir, tile_images
 import tensorflow as tf
 import numpy as np
 import skimage.transform
@@ -193,9 +193,8 @@ def perceptual_path_length_init(z1, z2, epsilon=1e-4):
 
 # Takes generated images from interpolated latents and gives the PPL.
 def perceptual_path_length(images1, images2):
-    act1, _ = latent_activations(images1, images2, "VGG")
-
-    return ppl.evaluate(act1)
+    act1, act2 = latent_activations(images1, images2, "VGG")
+    return ppl.evaluate(act1, act2)
 
 
 # For comparing generated and real samples via Inception v3 latent representation.
@@ -217,12 +216,9 @@ def latent_activations(images1, images2, model_name):
         act1 = tf.convert_to_tensor(model.predict(images1,), dtype=tf.float32)
         act2 = tf.convert_to_tensor(model.predict(images2), dtype=tf.float32)
     elif model_name == "VGG":
-        model = load_pkl(
-            "https://nvlabs-fi-cdn.nvidia.com/stylegan/networks/metrics/vgg16_zhang_perceptual.pkl"
-        )
-        act1 = tf.convert_to_tensor(
-            model.get_output_for(images1, images2), dtype=tf.float32
-        )
+        model = tf.keras.applications.VGG16(include_top=False)
+        act1 = model(images1)
+        act2 = model(images2)
 
     # latent representation
 

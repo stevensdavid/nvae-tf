@@ -33,7 +33,8 @@ def slerp(a, b, t):
 # ----------------------------------------------------------------------------
 
 
-def evaluate(distances, epsilon=1e-4):
+def evaluate(act1, act2, epsilon=1e-4):
+    distances = tf.linalg.norm(act1 - act2, axis=0)
     distances = distances * (1 / epsilon ** 2)
     # Reject outliers.
     lo = np.percentile(distances, 1, interpolation="lower")
