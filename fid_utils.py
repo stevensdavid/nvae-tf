@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import absolute_import, division, print_function
 
+from tqdm import tnrange
+
+# MODIFICATIONS: Added tqdm.trange, lines 4 and 434. Port to tf 2.0 on 523
+#
 # This file contains code from https://github.com/bioinf-jku/TTUR
 # which is Apache 2 licensed.
 """
@@ -427,7 +431,7 @@ def get_activations_from_files(files, sess, batch_size=50, verbose=False):
         batch_size = n_imgs
     n_batches = n_imgs//batch_size + 1
     pred_arr = np.empty((n_imgs,2048))
-    for i in range(n_batches):
+    for i in tnrange(n_batches, desc="File batch (FID)"):
         if verbose:
             print("\rPropagating batch %d/%d" % (i+1, n_batches), end="", flush=True)
         start = i*batch_size
@@ -516,7 +520,7 @@ def calculate_fid_given_paths(paths, inception_path, low_profile=False):
             raise RuntimeError("Invalid path: %s" % p)
 
     create_inception_graph(str(inception_path))
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(tf.global_variables_initializer())
         m1, s1 = _handle_path(paths[0], sess, low_profile=low_profile)
         m2, s2 = _handle_path(paths[1], sess, low_profile=low_profile)

@@ -10,10 +10,9 @@ import precision_recall as prec_rec
 import perceptual_path_length as ppl
 from tensorflow_probability import distributions
 import os
-import shutil
-import uuid
 from dataclasses import dataclass
 from typing import List
+from tqdm import tqdm
 
 @dataclass
 class Metrics:
@@ -75,14 +74,10 @@ def evaluate_model(
     # test_samples = tf.convert_to_tensor(test_samples)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
     with metrics_logger.as_default():
-        # Negative log-likelihood
-        nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
-        evaluation.nll = nll
-        tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
-        for temperature in [0.7, 0.8, 0.9, 1.0]:
+        for temperature in tqdm([0.7, 0.8, 0.9, 1.0], desc="Temperature based tests (PPL/PR)", total=4):
             # TODO: Handle batches, perform 1000 attempts and average
             temperature_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
-            for attempt in range(n_attempts):
+            for attempt in tqdm(range(n_attempts), desc="Sample attempt (PPL/PR)"):
                 generated_images, last_s, z1, z2 = model.sample(
                     temperature=temperature, n_samples=batch_size
                 )
@@ -119,7 +114,7 @@ def evaluate_model(
 
 def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
     nll = 0
-    for batch, _ in test_data:
+    for batch, _ in tqdm(test_data, desc="NLL Batch", total=len(test_data)):
         batch_logs = []
         for _ in range(n_attempts):
             reconstruction, _, log_p, log_q = model(batch)
@@ -155,8 +150,7 @@ def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
     os.makedirs(output_dir, exist_ok=True)
     if not os.listdir(dataset_dir):
         # We need to save the source images to the directory
-        print(f"[FID] Saving {dataset_name} to disk.")
-        for image_batch in dataset:
+        for image_batch in tqdm(dataset, desc="Saving dataset (FID)"):
             save_images_to_dir(image_batch, dataset_dir)
     for filename in os.listdir(output_dir):
         # Delete all old generated images

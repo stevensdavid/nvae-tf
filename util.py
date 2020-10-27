@@ -10,6 +10,7 @@ import tensorflow as tf
 import math
 import html
 import glob
+from tqdm.std import trange
 
 
 def tile_images(images):
@@ -23,7 +24,7 @@ def tile_images(images):
 
 
 def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
-    for image_batch in range(sample_size // batch_size):
+    for image_batch in trange(sample_size // batch_size, desc="Generating samples (FID)"):
         images, *_ = model.sample(
             n_samples=batch_size, return_mean=False, temperature=temperature
         )
