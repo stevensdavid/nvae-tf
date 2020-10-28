@@ -5,7 +5,6 @@ from util import softclamp5
 import tensorflow as tf
 
 from tensorflow.keras import layers, activations, Sequential
-from tensorflow_addons.layers import SpectralNormalization
 from dataclasses import dataclass
 
 
@@ -37,13 +36,8 @@ class Sampler(tf.keras.Model):
             n_groups = self.n_groups_per_scale[scale]
             for group in range(n_groups):
                 self.enc_sampler.append(
-                    # NVLabs use padding 1 here?
-                    SpectralNormalization(
-                        layers.Conv2D(
-                            2 * self.n_latent_per_group,
-                            kernel_size=(3, 3),
-                            padding="same",
-                        )
+                    layers.Conv2D(
+                        2 * self.n_latent_per_group, kernel_size=(3, 3), padding="same",
                     )
                 )
                 if scale == 0 and group == 0:
@@ -52,13 +46,8 @@ class Sampler(tf.keras.Model):
                 else:
                     sampler = Sequential()
                     sampler.add(layers.ELU())
-                    # NVLabs use padding 0 here?
                     sampler.add(
-                        SpectralNormalization(
-                            layers.Conv2D(
-                                2 * self.n_latent_per_group, kernel_size=(1, 1),
-                            )
-                        )
+                        layers.Conv2D(2 * self.n_latent_per_group, kernel_size=(1, 1),)
                     )
                     self.dec_sampler.append(sampler)
 
@@ -73,7 +62,9 @@ class Sampler(tf.keras.Model):
         mu, log_sigma = [tf.squeeze(p) for p in (mu, log_sigma)]
         return mu, log_sigma
 
-    def call(self, prior, z_idx, enc_prior=None) -> Tuple[tf.Tensor, DistributionParams]:
+    def call(
+        self, prior, z_idx, enc_prior=None
+    ) -> Tuple[tf.Tensor, DistributionParams]:
         # Get encoder offsets
         if enc_prior is None:
             enc_prior = prior
@@ -149,17 +140,13 @@ class Rescaler(tf.keras.Model):
         self.mode = rescale_type
         self.factor = scale_factor
         if rescale_type == RescaleType.UP:
-            self.conv = SpectralNormalization(
-                layers.Conv2D(n_channels, (3, 3), strides=(1, 1), padding="same")
+            self.conv = layers.Conv2D(
+                n_channels, (3, 3), strides=(1, 1), padding="same"
             )
+
         elif rescale_type == RescaleType.DOWN:
-            self.conv = SpectralNormalization(
-                layers.Conv2D(
-                    n_channels,
-                    (3, 3),
-                    strides=(self.factor, self.factor),
-                    padding="same",
-                )
+            self.conv = layers.Conv2D(
+                n_channels, (3, 3), strides=(self.factor, self.factor), padding="same",
             )
 
     def call(self, input):
