@@ -56,7 +56,7 @@ def train(args, model, train_data, test_data):
 
 
 def test(args, model, test_data):
-    from evaluate import evaluate_model, Metrics
+    from evaluate import evaluate_model
 
     metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
     metrics_logger = tf.summary.create_file_writer(metrics_logdir)
@@ -66,20 +66,13 @@ def test(args, model, test_data):
         test_data=test_data,
         metrics_logger=metrics_logger,
         batch_size=args.batch_size,
-        n_attempts=1,
+        n_attempts=10,
     )
     print(f"Negative log likelihood: {evaluation.nll}")
-    import pandas as pd
-
-    metrics = pd.DataFrame(
-        evaluation.sample_metrics,
-        columns=[x.name for x in Metrics.fields()],
-        index="temperature",
-    )
-    print(metrics.to_latex())
+    print(evaluation)
 
 
-def sample(args, model):
+def sample(args, model):    
     for t in [0.7, 0.8, 0.9, 1]:
         output_dir = os.path.join(args.sample_dir, f"t_{t:.1f}")
         os.makedirs(output_dir, exist_ok=True)

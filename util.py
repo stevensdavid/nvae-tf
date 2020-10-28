@@ -1,15 +1,10 @@
-import hashlib
+from dataclasses import dataclass
 import io
 import os
-import pickle
-import re
 import uuid
-import requests
-from typing import Any
+import numpy as np
+from typing import Any, List
 import tensorflow as tf
-import math
-import html
-import glob
 from tqdm.std import trange
 
 
@@ -25,7 +20,7 @@ def tile_images(images):
 
 def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
     batches = max(sample_size // batch_size, 1)
-    for image_batch in trange(batches, desc="Generating samples (FID)"):
+    for image_batch in trange(batches, desc="Generating samples"):
         images, *_ = model.sample(
             n_samples=batch_size, return_mean=False, temperature=temperature
         )
@@ -52,3 +47,28 @@ def calculate_log_p(z, mu, sigma):
 
 def softclamp5(x):
     return 5.0 * tf.math.tanh(x / 5.0)  # differentiable clamp [-5, 5]
+
+
+@dataclass
+class Metric:
+    mean: float
+    stddev: float
+
+    @staticmethod
+    def from_list(l):
+        return Metric(mean=np.mean(l), stddev=np.std(l))
+
+
+@dataclass
+class Metrics:
+    temperature: float
+    fid: float
+    ppl: Metric
+    precision: Metric
+    recall: Metric
+
+
+@dataclass
+class ModelEvaluation:
+    nll: Metric
+    sample_metrics: List[Metrics]

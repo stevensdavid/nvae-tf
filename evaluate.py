@@ -1,7 +1,6 @@
-from tensorflow.python.keras.engine.training import Model
 from fid_utils import calculate_fid_given_paths
 from models import NVAE
-from util import sample_to_dir, save_images_to_dir, tile_images
+from util import Metric, Metrics, ModelEvaluation, sample_to_dir, save_images_to_dir, tile_images
 import tensorflow as tf
 import numpy as np
 import skimage.transform
@@ -10,24 +9,7 @@ import precision_recall as prec_rec
 import perceptual_path_length as ppl
 from tensorflow_probability import distributions
 import os
-from dataclasses import dataclass
-from typing import List
 from tqdm import tqdm
-
-
-@dataclass
-class Metrics:
-    temperature: float
-    fid: float
-    ppl: float
-    precision: float
-    recall: float
-
-
-@dataclass
-class ModelEvaluation:
-    nll: float
-    sample_metrics: List[Metrics]
 
 
 def save_samples_to_tensorboard(epoch, model, image_logger):
@@ -66,7 +48,7 @@ def save_reconstructions_to_tensorboard(
 
 
 def evaluate_model(
-    epoch, model, test_data, metrics_logger, batch_size, n_attempts=2
+    epoch, model, test_data, metrics_logger, batch_size, n_attempts=10
 ) -> ModelEvaluation:
     # PPL
     # slerp, slerp_perturbed = e.perceptual_path_length_init()
@@ -75,79 +57,72 @@ def evaluate_model(
     # test_samples, _ = next(test_data.as_numpy_iterator())
     # test_samples = tf.convert_to_tensor(test_samples)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
-    with metrics_logger.as_default():
-        for temperature in tqdm(
-            [0.7, 0.8, 0.9, 1.0], desc="Temperature based tests (PPL/PR)", total=4
-        ):
-            # TODO: Handle batches, perform 1000 attempts and average
-            fid = evaluate_fid(
-                model,
-                test_data,
-                "mnist",
-                batch_size=batch_size,
-                temperature=temperature,
+    for temperature in tqdm(
+        [0.6, 0.8, 1.0], desc="Temperature based tests (PPL/PR)", total=4
+    ):
+        # TODO: Handle batches, perform 1000 attempts and average
+        precisions = []
+        recalls = []
+        ppls = []
+        for attempt in tqdm(range(n_attempts), desc="Sample attempt (PPL/PR)"):
+            generated_images, last_s, z1, z2 = model.sample(
+                temperature=temperature, n_samples=batch_size
             )
-            temperature_scores = tf.convert_to_tensor([0.0, 0.0, 0.0])
-            for attempt in tqdm(range(n_attempts), desc="Sample attempt (PPL/PR)"):
-                generated_images, last_s, z1, z2 = model.sample(
-                    temperature=temperature, n_samples=batch_size
-                )
-                precision, recall = 0, 0
-                for test_batch, _ in test_data:
+            precision, recall = 0, 0
+            for test_batch, _ in test_data:
+                for microbatch in tf.split(test_batch, 2):
+                    pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(microbatch)[0])
                     # PR
                     batch_precision, batch_recall = precision_recall(
-                        generated_images, test_batch
+                        pr_images, microbatch
                     )
                     precision += batch_precision.item()
                     recall += batch_recall.item()
-                # PPL
-                slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
-                images1, images2 = (
-                    model.sample_with_z(slerp, last_s),
-                    model.sample_with_z(slerp_perturbed, last_s),
-                )
-                ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-                temperature_scores = temperature_scores + [
-                    ppl,
-                    precision / len(test_data),
-                    recall / len(test_data),
-                ]
-            temperature_scores = temperature_scores / n_attempts
-            tf.summary.scalar(f"t={temperature}/ppl", temperature_scores[0], step=epoch)
-            tf.summary.scalar(
-                f"t={temperature}/precision", temperature_scores[1], step=epoch
+            # PPL
+            slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+            images1, images2 = (
+                model.sample_with_z(slerp, last_s),
+                model.sample_with_z(slerp_perturbed, last_s),
             )
-            tf.summary.scalar(
-                f"t={temperature}/recall", temperature_scores[2], step=epoch
+            ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+            ppls.append(ppl)
+            precisions.append(precision / len(test_data))
+            recalls.append(recall / len(test_data))
+        fid = evaluate_fid(
+            model,
+            test_data,
+            "mnist",
+            batch_size=batch_size,
+            temperature=temperature,
+        )
+        evaluation.sample_metrics.append(
+            Metrics(
+                temperature=temperature,
+                fid=fid,
+                ppl=Metric.from_list(ppls),
+                precision=Metric.from_list(precisions),
+                recall=Metric.from_list(recalls),
             )
-            tf.summary.scalar(f"t={temperature}/fid", fid, step=epoch)
-            evaluation.sample_metrics.append(
-                Metrics(
-                    temperature=temperature,
-                    fid=fid,
-                    ppl=temperature_scores[0],
-                    precision=temperature_scores[1],
-                    recall=temperature_scores[2],
-                )
-            )
-        # Negative log-likelihood
-        nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
-        evaluation.nll = nll
-        tf.summary.scalar("negative_log_likelihood", nll, step=epoch)
+        )
+    # Negative log-likelihood
+    evaluation.nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
+    return evaluation
 
 
 def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
-    nll = 0
-    for batch, _ in tqdm(test_data, desc="NLL Batch", total=len(test_data)):
+    nlls = []
+    for _ in range(n_attempts):
         batch_logs = []
-        for _ in range(n_attempts):
+        nll = 0
+        for batch, _ in tqdm(test_data, desc="NLL Batch", total=len(test_data)):
             reconstruction, _, log_p, log_q = model(batch, nll=True)
             log_iw = -model.calculate_recon_loss(batch, reconstruction) - log_q + log_p
             batch_logs.append(log_iw)
-        nll -= tf.math.reduce_mean(
+        nll = -tf.reduce_sum(tf.math.reduce_mean(
             tf.math.reduce_logsumexp(tf.stack(batch_logs), axis=0) - n_attempts
-        )
-    return nll / len(test_data)
+        ))
+        nlls.append(nll)
+    return Metric.from_list(nlls)
 
 
 # Takes 2 batches of images (b_size x 299 x 299 x 3) from different sources and calculates a FID score.
