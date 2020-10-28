@@ -61,13 +61,14 @@ class Decoder(tf.keras.Model):
             tf.random.uniform(h_shape, minval=0, maxval=1), trainable=True
         )
 
-    def call(self, prior, enc_dec_combiners: List):
+    def call(self, prior, enc_dec_combiners: List, nll=False):
         z_params = []
         all_log_p = []
         all_log_q = []
         z0, params = self.sampler(prior, z_idx=0)
-        all_log_q.append(calculate_log_p(z0, params.enc_mu, params.enc_sigma))
-        all_log_p.append(calculate_log_p(z0, params.dec_mu, params.dec_sigma))
+        if nll:
+            all_log_q.append(calculate_log_p(z0, params.enc_mu, params.enc_sigma))
+            all_log_p.append(calculate_log_p(z0, params.dec_mu, params.dec_sigma))
         z_params.append(params)
         h = tf.expand_dims(self.h, 0)
         h = tf.tile(h, [tf.shape(z0)[0], 1, 1, 1])
@@ -80,12 +81,13 @@ class Decoder(tf.keras.Model):
                 z_sample, params = self.sampler(
                     x, z_idx=combine_idx + 1, enc_prior=enc_prior
                 )
-                all_log_q.append(
-                    calculate_log_p(z_sample, params.enc_mu, params.enc_sigma)
-                )
-                all_log_p.append(
-                    calculate_log_p(z_sample, params.dec_mu, params.dec_sigma)
-                )
+                if nll:
+                    all_log_q.append(
+                        calculate_log_p(z_sample, params.enc_mu, params.enc_sigma)
+                    )
+                    all_log_p.append(
+                        calculate_log_p(z_sample, params.dec_mu, params.dec_sigma)
+                    )
                 z_params.append(params)
                 x = group(x, z_sample)
                 combine_idx += 1
@@ -94,9 +96,10 @@ class Decoder(tf.keras.Model):
 
         log_p = tf.zeros((tf.shape(x)[0]))
         log_q = tf.zeros((tf.shape(x)[0]))
-        for p, q in zip(all_log_p, all_log_q):
-            log_p += tf.reduce_sum(p, axis=[1, 2, 3])
-            log_q += tf.reduce_sum(q, axis=[1, 2, 3])
+        if nll:
+            for p, q in zip(all_log_p, all_log_q):
+                log_p += tf.reduce_sum(p, axis=[1, 2, 3])
+                log_q += tf.reduce_sum(q, axis=[1, 2, 3])
 
         return x, z_params, log_p, log_q
 

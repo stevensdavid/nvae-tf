@@ -141,7 +141,7 @@ def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000)
     for batch, _ in tqdm(test_data, desc="NLL Batch", total=len(test_data)):
         batch_logs = []
         for _ in range(n_attempts):
-            reconstruction, _, log_p, log_q = model(batch)
+            reconstruction, _, log_p, log_q = model(batch, nll=True)
             log_iw = -model.calculate_recon_loss(batch, reconstruction) - log_q + log_p
             batch_logs.append(log_iw)
         nll -= tf.math.reduce_mean(

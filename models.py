@@ -86,13 +86,13 @@ class NVAE(tf.keras.Model):
         # Updated for each gradient pass, training step
         self.steps = 0
 
-    def call(self, inputs):
+    def call(self, inputs, nll=False):
         x = self.preprocess(inputs)
         enc_dec_combiners, final_x = self.encoder(x)
         # Flip bottom-up to top-down
         enc_dec_combiners.reverse()
         reconstruction, z_params, log_p, log_q = self.decoder(
-            final_x, enc_dec_combiners
+            final_x, enc_dec_combiners, nll=nll
         )
         reconstruction = self.postprocess(reconstruction)
         return reconstruction, z_params, log_p, log_q
