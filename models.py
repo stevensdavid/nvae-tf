@@ -85,6 +85,7 @@ class NVAE(tf.keras.Model):
         self.epoch = 0
         self.total_epochs = total_epochs
         self.step_based_warmup = step_based_warmup
+        self.initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
         # Updated for each gradient pass, training step
         self.steps = 0
 
@@ -118,7 +119,7 @@ class NVAE(tf.keras.Model):
         with tf.GradientTape() as tape:
             reconstruction, z_params, *_ = self(data)
             recon_loss = self.calculate_recon_loss(data, reconstruction)
-            bn_loss, sr_loss = self.calculate_spectral_and_bn_loss()
+            sr_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             # warming up KL term for first 30% of training
             warmup_metric = self.steps if self.step_based_warmup else self.epoch
             beta = min(warmup_metric / (0.3 * self.n_total_iterations), 1)
