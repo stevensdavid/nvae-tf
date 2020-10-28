@@ -35,6 +35,7 @@ class Preprocess(tf.keras.Model):
         self.output_shape_ = input_shape
 
     def call(self, inputs):
+        # 2 * inputs - 1 in order to convert [0,1] range to [-1,1]
         return self.pre_process(2 * inputs - 1)
 
 
@@ -83,7 +84,7 @@ class BNSwishConv(tf.keras.Model):
             # We have to rescale the input in order to combine it
             self.skip = SkipScaler(n_channels)
         for i in range(n_nodes):
-            self.nodes.add(layers.BatchNormalization(momentum=0.05))
+            self.nodes.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))
             self.nodes.add(layers.Activation(activations.swish))
             #
             self.nodes.add(
@@ -103,4 +104,4 @@ class BNSwishConv(tf.keras.Model):
         skipped = self.skip(inputs)
         x = self.nodes(inputs)
         x = self.se(x)
-        return skipped + x
+        return skipped + 0.1 * x
