@@ -121,8 +121,10 @@ class NVAE(tf.keras.Model):
             recon_loss = self.calculate_recon_loss(data, reconstruction)
             sr_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             # warming up KL term for first 30% of training
-            warmup_metric = self.steps if self.step_based_warmup else self.epoch
-            beta = min(warmup_metric / (0.3 * self.n_total_iterations), 1)
+            if self.step_based_warmup:
+                beta = min(self.steps / (0.3 * self.n_total_iterations), 1)
+            else:
+                beta = min(self.epoch / (0.3 * self.total_epochs), 1)
             activate_balancing = beta < 1
             kl_loss = beta * self.calculate_kl_loss(z_params, activate_balancing)
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
