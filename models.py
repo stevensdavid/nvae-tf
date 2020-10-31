@@ -282,7 +282,7 @@ class NVAE(tf.keras.Model):
             if isinstance(layer, layers.Conv2D):
                 w = layer.weights[0]
                 w = tf.reshape(w, [tf.shape(w)[0], -1])
-                n_power_iterations = 1
+                n_power_iterations = 4
                 if spectral_index == len(u):
                     # Initialize
                     d1, d2 = tf.shape(w)
