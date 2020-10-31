@@ -14,9 +14,7 @@ from tqdm import tqdm
 
 def save_samples_to_tensorboard(epoch, model, image_logger):
     for temperature in [0.7, 0.8, 0.9, 1.0]:
-        images, *_ = model.sample(temperature=temperature)
-        images = tile_images(images)
-        images = tf.expand_dims(images, axis=0)
+        images, *_ = model.sample(temperature=temperature, n_samples=3)
         with image_logger.as_default():
             tf.summary.image(
                 f"t={temperature:.1f}", images, step=epoch,
