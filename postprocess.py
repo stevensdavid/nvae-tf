@@ -52,7 +52,7 @@ class PostprocessCell(tf.keras.Model):
                 upscale = False
 
     def call(self, inputs):
-        return self.skip(inputs) + self.sequence(inputs)
+        return self.skip(inputs) + 0.1 * self.sequence(inputs)
 
 
 class PostprocessNode(tf.keras.Model):
@@ -65,7 +65,7 @@ class PostprocessNode(tf.keras.Model):
             self.sequence.add(
                 Rescaler(n_channels, scale_factor, rescale_type=RescaleType.UP)
             )
-        self.sequence.add(layers.BatchNormalization(momentum=0.05))
+        self.sequence.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))
         hidden_dim = n_channels * expansion_ratio
         self.sequence.add(ConvBNSwish(hidden_dim, kernel_size=(1, 1), stride=(1, 1)))
         self.sequence.add(
@@ -76,7 +76,7 @@ class PostprocessNode(tf.keras.Model):
                 n_channels, kernel_size=(1, 1), strides=(1, 1), use_bias=False
             )
         )
-        self.sequence.add(layers.BatchNormalization(momentum=0.05))
+        self.sequence.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))
         self.sequence.add(SqueezeExcitation())
 
     def call(self, inputs):
@@ -97,7 +97,7 @@ class ConvBNSwish(tf.keras.Model):
                 padding="same",
             )
         )
-        self.sequence.add(layers.BatchNormalization(momentum=0.05))
+        self.sequence.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))
         self.sequence.add(layers.Activation(activations.swish))
 
     def call(self, inputs):

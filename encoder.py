@@ -85,22 +85,17 @@ class EncodingResidualCell(tf.keras.Model):
 
     def __init__(self, output_channels, **kwargs):
         super().__init__(**kwargs)
-        self.batch_norm1 = layers.BatchNormalization(momentum=0.05)
+
+        self.batch_norm1 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
         self.conv1 = layers.Conv2D(output_channels, (3, 3), padding="same")
-        self.batch_norm2 = layers.BatchNormalization(momentum=0.05)
+        self.batch_norm2 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
         self.conv2 = layers.Conv2D(output_channels, (3, 3), padding="same")
         self.se = SqueezeExcitation()
 
     def call(self, inputs):
-        # 8x24x24x32
         x = activations.swish(self.batch_norm1(inputs))
-        # 8x24x24x32
         x = self.conv1(x)
-        # 8x22x22x32
         x = activations.swish(self.batch_norm2(x))
-        # 8x22x22x32
         x = self.conv2(x)
-        # 8x20x20x32
         x = self.se(x)
-        # 8x32
-        return inputs + x
+        return 0.1 * inputs + x
