@@ -79,10 +79,13 @@ class NVAE(tf.keras.Model):
             mult=mult,
             n_channels_decoder=n_decoder_channels,
         )
+        self.u = []
+        self.v = []
         # Updated at start of each epoch
         self.epoch = 0
         self.total_epochs = total_epochs
         self.step_based_warmup = step_based_warmup
+        self.initializer = tf.random_normal_initializer(mean=0.0, stddev=1.0)
         # Updated for each gradient pass, training step
         self.steps = 0
 
@@ -116,14 +119,16 @@ class NVAE(tf.keras.Model):
         with tf.GradientTape() as tape:
             reconstruction, z_params, *_ = self(data)
             recon_loss = self.calculate_recon_loss(data, reconstruction)
-            bn_loss = self.calculate_bn_loss()
+            sr_loss, bn_loss = self.calculate_spectral_and_bn_loss()
             # warming up KL term for first 30% of training
-            warmup_metric = self.steps if self.step_based_warmup else self.epoch
-            beta = min(warmup_metric / (0.3 * self.n_total_iterations), 1)
+            if self.step_based_warmup:
+                beta = min(self.steps / (0.3 * self.n_total_iterations), 1)
+            else:
+                beta = min(self.epoch / (0.3 * self.total_epochs), 1)
             activate_balancing = beta < 1
             kl_loss = beta * self.calculate_kl_loss(z_params, activate_balancing)
             loss = tf.math.reduce_mean(recon_loss + kl_loss)
-            total_loss = loss + bn_loss
+            total_loss = loss + bn_loss + sr_loss
         gradients = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_weights))
         self.steps += 1
@@ -132,6 +137,7 @@ class NVAE(tf.keras.Model):
             "reconstruction_loss": recon_loss,
             "kl_loss": kl_loss,
             "bn_loss": bn_loss,
+            "sr_loss": sr_loss,
         }
 
     def sample(self, n_samples=16, temperature=1.0, return_mean=True):
@@ -261,3 +267,66 @@ class NVAE(tf.keras.Model):
                 update_loss(layer)
 
         return self.sr_lambda * bn_loss
+
+    def calculate_spectral_and_bn_loss(self):
+        bn_loss = 0
+        spectral_loss = 0
+        spectral_index = 0
+
+        # This is a hack to allow checkpointing - attributes are append-only
+        # so we have to create new lists which are assingned in the end of
+        # the method.
+        u = [t for t in self.u]
+        v = [t for t in self.v]
+
+        def update_loss(layer):
+            nonlocal spectral_loss, bn_loss, spectral_index, u, v
+            if isinstance(layer, layers.Conv2D):
+                w = layer.weights[0]
+                w = tf.reshape(w, [tf.shape(w)[0], -1])
+                n_power_iterations = 4
+                if spectral_index == len(u):
+                    # Initialize
+                    d1, d2 = tf.shape(w)
+                    u.append(tf.Variable(self.initializer([1, d1]), trainable=False))
+                    v.append(tf.Variable(self.initializer([1, d2]), trainable=False))
+                    n_power_iterations = 10
+                for _ in range(n_power_iterations):
+                    v[spectral_index] = tf.math.l2_normalize(
+                        tf.squeeze(
+                            tf.linalg.matmul(
+                                tf.expand_dims(u[spectral_index], axis=1), w
+                            ),
+                            [1],
+                        ),
+                        axis=1,
+                        epsilon=1e-3,
+                    )
+                    u[spectral_index] = tf.math.l2_normalize(
+                        tf.squeeze(
+                            tf.linalg.matmul(
+                                w, tf.expand_dims(v[spectral_index], axis=2)
+                            ),
+                            [2],
+                        ),
+                        axis=1,
+                        epsilon=1e-3,
+                    )
+                sigma = tf.linalg.matmul(
+                    tf.expand_dims(u[spectral_index], axis=1),
+                    tf.linalg.matmul(w, tf.expand_dims(v[spectral_index], axis=2)),
+                )
+                spectral_loss += tf.math.reduce_sum(sigma)
+                spectral_index += 1
+            elif isinstance(layer, layers.BatchNormalization):
+                bn_loss += tf.math.reduce_max(tf.math.abs(layer.weights[0]))
+            elif hasattr(layer, "layers"):
+                for inner_layer in layer.layers:
+                    update_loss(inner_layer)
+
+        for model in [self.encoder, self.decoder]:
+            for layer in model.groups:
+                update_loss(layer)
+        self.u = u
+        self.v = v
+        return self.sr_lambda * spectral_loss, self.sr_lambda * bn_loss
