@@ -107,18 +107,19 @@ def evaluate_model(
     return evaluation
 
 
-def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=1000):
+def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=10):
     nlls = []
-    for _ in range(n_attempts):
+    for batch, _ in tqdm(test_data, desc="NLL Batch", total=len(test_data)):
         batch_logs = []
-        nll = 0
-        for batch, _ in tqdm(test_data, desc="NLL Batch", total=len(test_data)):
+        for _ in range(n_attempts):
             reconstruction, _, log_p, log_q = model(batch, nll=True)
             log_iw = -model.calculate_recon_loss(batch, reconstruction) - log_q + log_p
             batch_logs.append(log_iw)
-        nll = -tf.reduce_sum(tf.math.reduce_mean(
-            tf.math.reduce_logsumexp(tf.stack(batch_logs), axis=0) - n_attempts
-        ))
+        nll = -tf.reduce_sum(
+            tf.math.reduce_mean(
+                tf.math.reduce_logsumexp(tf.stack(batch_logs), axis=0) - n_attempts
+            )
+        )
         nlls.append(nll)
     return Metric.from_list(nlls)
 
