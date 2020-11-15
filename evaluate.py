@@ -117,7 +117,7 @@ def neg_log_likelihood(model: NVAE, test_data: tf.data.Dataset, n_attempts=10):
             batch_logs.append(log_iw)
         nll = -tf.reduce_sum(
             tf.math.reduce_mean(
-                tf.math.reduce_logsumexp(tf.stack(batch_logs), axis=0) - n_attempts
+                tf.math.reduce_logsumexp(tf.stack(batch_logs), axis=0) - tf.math.log(float(n_attempts))
             )
         )
         nlls.append(nll)
