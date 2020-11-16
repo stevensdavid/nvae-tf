@@ -245,7 +245,11 @@ class NVAE(tf.keras.Model):
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch = epoch
 
-    def calculate_recon_loss(self, inputs, reconstruction):
+    def calculate_recon_loss(self, inputs, reconstruction, crop_output=False):
+        if crop_output:
+            inputs = inputs[:, 2:30, 2:30, :]
+            reconstruction = reconstruction[:, 2:30, 2:30, :]
+
         log_probs = distributions.Bernoulli(
             logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
         ).log_prob(inputs)
