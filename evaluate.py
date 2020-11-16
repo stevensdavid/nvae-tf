@@ -61,7 +61,7 @@ def evaluate_model(
         ppls = []
         precisions = []
         recalls = []
-        for attempt in trange(2, desc="PR/PPL Attempts"):
+        for attempt in trange(n_attempts, desc="PR/PPL Attempts"):
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
