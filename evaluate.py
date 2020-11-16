@@ -51,11 +51,13 @@ def evaluate_model(
     epoch, model, test_data, metrics_logger, batch_size, n_attempts=10
 ) -> ModelEvaluation:
     test_data = test_data.shuffle(batch_size)
+    rescaled_test_data = tf.data.Dataset.from_tensor_slices(
+        [resize(x) for x, _ in tqdm(test_data, desc="Rescaling test data", total=len(test_data))]
+    )
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
     for temperature in tqdm(
         [1.0], desc="Temperature based tests (PPL/PR)", total=4
     ):
-        rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
         ppls = []
         precisions = []
         recalls = []
