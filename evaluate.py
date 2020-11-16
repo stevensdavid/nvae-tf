@@ -72,10 +72,10 @@ def evaluate_model(
         with open("res.txt", "r+") as resfile:
             lines = resfile.readlines()
             if lines != []:
-                _,_,_,attempts = lines
-                initial_attempts = int(attempts) + 1 # even though it didn't finish, it'll be counted as an attempt
+                _,_,_,iterations = lines
+                initial_attempts = int(iterations) + 1 # even though it didn't finish, it'll be counted as an attempt
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
-        for attempt in range(n_attempts):
+        for attempt in range(initial_attempts, n_attempts):
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
@@ -102,25 +102,25 @@ def evaluate_model(
                 with open("res.txt", "r") as resfile:
                     lines = resfile.readlines()
 
-                    previous_attempts = initial_attempts + attempt # zero-indexed
+                    previous_iterations = initial_attempts + attempt*len(rescaled_test_data) + i # zero-indexed
                     if lines == []:
                         p, r, ppl_prev = 0,0,0
                     else:
                         p, r, ppl_prev, _ = lines
-                        p = float(p) * previous_attempts
-                        r = float(r) * previous_attempts
-                        ppl_prev = float(ppl_prev) * previous_attempts
+                        p = float(p) * previous_iterations
+                        r = float(r) * previous_iterations
+                        ppl_prev = float(ppl_prev) * previous_iterations
 
-                    attempts = previous_attempts + 1
-                    p = (p + batch_precision.item()) / attempts 
-                    r = (r + batch_recall.item()) / attempts
-                    ppl_new = (batch_ppl + ppl_prev ) / attempts
+                    iterations = previous_iterations + 1
+                    p = (p + batch_precision.item()) / iterations 
+                    r = (r + batch_recall.item()) / iterations
+                    ppl_new = (batch_ppl + ppl_prev ) / iterations
 
                 with open("res.txt", "w") as resfile:
                     resfile.write(f"{p}\n")
                     resfile.write(f"{r}\n")
                     resfile.write(f"{ppl_new.numpy().item()}\n")
-                    resfile.write(f"{attempts}\n")
+                    resfile.write(f"{attempt}\n")
 
         evaluation.sample_metrics.append(
             Metrics(
