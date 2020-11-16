@@ -10,9 +10,7 @@ import precision_recall as prec_rec
 import perceptual_path_length as ppl
 from tensorflow_probability import distributions
 import os
-from pympler import muppy, summary
-from tqdm import tqdm
-import importlib
+from tqdm import tqdm, trange
 
 model_iv3, model_vgg = None, None
 
@@ -52,38 +50,23 @@ def save_reconstructions_to_tensorboard(
 def evaluate_model(
     epoch, model, test_data, metrics_logger, batch_size, n_attempts=10
 ) -> ModelEvaluation:
-    # PPL
-    # slerp, slerp_perturbed = e.perceptual_path_length_init()
-    # images1, images2 = model.sample(z=slerp), model.sample(z=slerp_perturbed)
-    # TODO: Handle entire dataset
-    # test_samples, _ = next(test_data.as_numpy_iterator())
-    # test_samples = tf.convert_to_tensor(test_samples)
-    print("In evaluate")
     test_data = test_data.shuffle(batch_size)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
     for temperature in tqdm(
         [1.0], desc="Temperature based tests (PPL/PR)", total=4
     ):
-        precision, recall = 0, 0
-        overall_ppl = 0
-        initial_attempts = 0 #before OOM crashing
-        if not os.path.exists("res.txt"):
-            open("res.txt", "w").close()
-        with open("res.txt", "r+") as resfile:
-            lines = resfile.readlines()
-            if lines != []:
-                _,_,_,iterations = lines
-                initial_attempts = int(iterations) + 1 # even though it didn't finish, it'll be counted as an attempt
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
-        for attempt in range(initial_attempts, n_attempts):
+        ppls = []
+        precisions = []
+        recalls = []
+        for attempt in trange(2, desc="PR/PPL Attempts"):
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
-
-            for i, test_batch in enumerate(rescaled_test_data):
-                print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
-                print("Stopping condition: %d out of %d" % (i*(initial_attempts + attempt), n_attempts*len(test_batch)))
-
+            batch_ppls = []
+            batch_precisions = []
+            batch_recalls = []
+            for test_batch in tqdm(rescaled_test_data, desc="Batch", total=len(rescaled_test_data)):
                 # PR
                 pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
                 batch_precision, batch_recall = precision_recall(
@@ -97,38 +80,24 @@ def evaluate_model(
                     model.sample_with_z(slerp_perturbed, last_s),
                 )
                 batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-
-                # Save progress
-                with open("res.txt", "r") as resfile:
-                    lines = resfile.readlines()
-
-                    previous_iterations = initial_attempts + attempt*len(rescaled_test_data) + i # zero-indexed
-                    if lines == []:
-                        p, r, ppl_prev = 0,0,0
-                    else:
-                        p, r, ppl_prev, _ = lines
-                        p = float(p) * previous_iterations
-                        r = float(r) * previous_iterations
-                        ppl_prev = float(ppl_prev) * previous_iterations
-
-                    iterations = previous_iterations + 1
-                    p = (p + batch_precision.item()) / iterations 
-                    r = (r + batch_recall.item()) / iterations
-                    ppl_new = (batch_ppl + ppl_prev ) / iterations
-
-                with open("res.txt", "w") as resfile:
-                    resfile.write(f"{p}\n")
-                    resfile.write(f"{r}\n")
-                    resfile.write(f"{ppl_new.numpy().item()}\n")
-                    resfile.write(f"{attempt}\n")
+                batch_precisions.append(batch_precision)
+                batch_recalls.append(batch_recall)
+                batch_ppls.append(batch_ppl)
+            ppl = np.mean(batch_ppls)
+            precision = np.mean(batch_precisions)
+            recall = np.mean(batch_recalls)
+            ppls.append(ppl)
+            precisions.append(precision)
+            recalls.append(recall)
+            tqdm.write(f"Attempt results: PPL {ppl:.4f} | Precision {precision:.4f} | Recall {recall:.4f}")
 
         evaluation.sample_metrics.append(
             Metrics(
                 temperature=temperature,
-                #fid=fid,
-                ppl=overall_ppl,
-                precision=precision,
-                recall=recall
+                fid=None,
+                ppl=Metric.from_list(ppls),
+                precision=Metric.from_list(precisions),
+                recall=Metric.from_list(recalls)
             )
         )
     # Negative log-likelihood
