@@ -71,7 +71,7 @@ def evaluate_model(
         with open("res.txt", "r+") as resfile:
             lines = resfile.readlines()
             if lines != []:
-                _,_,_,attempts,_ = lines
+                _,_,_,attempts = lines
                 initial_attempts = int(attempts) + 1 # even though it didn't finish, it'll be counted as an attempt
 
         for attempt in range(n_attempts):
