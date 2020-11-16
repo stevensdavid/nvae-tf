@@ -23,7 +23,7 @@ def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
     batches = max(sample_size // batch_size, 1)
     for image_batch in trange(batches, desc="Generating samples"):
         images, *_ = model.sample(
-            n_samples=batch_size, return_mean=False, temperature=temperature
+            n_samples=batch_size, greyscale=True, temperature=temperature
         )
         save_images_to_dir(images, output_dir)
 
