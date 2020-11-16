@@ -96,7 +96,7 @@ def main(args):
     if args.dataset == "mnist":
         from datasets import load_mnist
 
-        train_data, test_data = load_mnist(batch_size=args.batch_size)
+        train_data, test_data = load_mnist(batch_size=args.batch_size, binary=args.mode == "train")
     else:
         raise ArgumentError("Unsupported dataset")
     if args.debug:
