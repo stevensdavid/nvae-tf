@@ -58,21 +58,21 @@ def evaluate_model(
     # test_samples, _ = next(test_data.as_numpy_iterator())
     # test_samples = tf.convert_to_tensor(test_samples)
     print("In evaluate")
-    test_data = tf.random.shuffle(test_data)
+    test_data = test_data.shuffle(batch_size)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
-    print(test_data.shape)
     for temperature in tqdm(
         [1.0], desc="Temperature based tests (PPL/PR)", total=4
     ):
         precision, recall = 0, 0
-        perceptual_path_length = 0
+        overall_ppl = 0
         prev_attempts = 0 #before OOM crashing
-
-        with open("res.txt", "r") as resfile:
+        if not os.path.exists("res.txt"):
+            open("res.txt", "w").close()
+        with open("res.txt", "r+") as resfile:
             lines = resfile.readlines()
             if lines != []:
                 _,_,_,attempts,_ = lines
-                prev_attempts = attempts + 1 # even though it didn't finish, it'll be counted as an attempt
+                prev_attempts = int(attempts) + 1 # even though it didn't finish, it'll be counted as an attempt
                 
 
         for attempt in range(n_attempts):
@@ -80,7 +80,7 @@ def evaluate_model(
                 temperature=temperature, n_samples=batch_size
             )
 
-            for i,test_batch in enumerate(test_data):
+            for i, (test_batch, _) in enumerate(test_data):
                 print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + prev_attempts, n_attempts))
                 print("Stopping condition: %d out of %d" % (i*(prev_attempts + attempt), n_attempts*len(test_batch)))
 
@@ -96,24 +96,25 @@ def evaluate_model(
                     model.sample_with_z(slerp, last_s),
                     model.sample_with_z(slerp_perturbed, last_s),
                 )
-                ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+                batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
 
                 # Save progress
-                with open("res.txt", "wr") as resfile:
+                with open("res.txt", "r") as resfile:
                     lines = resfile.readlines()
 
                     if lines == []:
-                        p, r, ppl_prev, i_s = 0,0,0,0,0
+                        p, r, ppl_prev, i_s = 0,0,0,0
                     else:
                         p, r, ppl_prev, _, i_s = lines
 
                     p = float(p)
                     r = float(r)
                     ppl_prev = float(ppl_prev)
+                    i_s = int(i_s)
 
                     p += batch_precision.item()
                     r += batch_precision.item()
-                    ppl_new = ppl + ppl_prev
+                    ppl_new = batch_ppl + ppl_prev
 
                     attempts = prev_attempts + attempt
                     i_s += 1
@@ -127,26 +128,26 @@ def evaluate_model(
                         recall = r
 
                         ppl_new = ppl_new/(n_attempts * len(test_data))
-                        perceptual_path_length = ppl_new
-                    
-                    resfile.write(p)
-                    resfile.write(r)
-                    resfile.write(ppl_new)
-                    resfile.write(attempts)
-                    resfile.write(i_s)
+                        overall_ppl = ppl_new
+                with open("res.txt", "w") as resfile:
+                    resfile.write(f"{p}\n")
+                    resfile.write(f"{r}\n")
+                    resfile.write(f"{ppl_new.numpy().item()}\n")
+                    resfile.write(f"{attempts}\n")
+                    resfile.write(f"{i_s}\n")
 
 
         evaluation.sample_metrics.append(
             Metrics(
                 temperature=temperature,
                 #fid=fid,
-                ppl=perceptual_path_length,
+                ppl=overall_ppl,
                 precision=precision,
                 recall=recall
             )
         )
     # Negative log-likelihood
-    evaluation.nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
+    # evaluation.nll = neg_log_likelihood(model, test_data, n_attempts=n_attempts)
     return evaluation
 
 
@@ -257,10 +258,10 @@ def latent_activations(images1, images2, model_name):
         else:
             model = model_vgg
 
-        print("------------ FIRST ------------")
-        all_objects = muppy.get_objects()
-        sum1 = summary.summarize(all_objects) 
-        summary.print_(sum1)
+        # print("------------ FIRST ------------")
+        # all_objects = muppy.get_objects()
+        # sum1 = summary.summarize(all_objects) 
+        # summary.print_(sum1)
         
         act1 = model(images1)
         act2 = model(images2) # OOM
