@@ -1,3 +1,4 @@
+from numpy.lib.arraysetops import isin
 from fid_utils import calculate_fid_given_paths
 from models import NVAE
 from util import Metric, Metrics, ModelEvaluation, sample_to_dir, save_images_to_dir, tile_images
@@ -73,13 +74,13 @@ def evaluate_model(
             if lines != []:
                 _,_,_,attempts = lines
                 initial_attempts = int(attempts) + 1 # even though it didn't finish, it'll be counted as an attempt
-
+        rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
         for attempt in range(n_attempts):
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
 
-            for i, (test_batch, _) in enumerate(test_data):
+            for i, test_batch in enumerate(rescaled_test_data):
                 print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
                 print("Stopping condition: %d out of %d" % (i*(initial_attempts + attempt), n_attempts*len(test_batch)))
 
@@ -283,6 +284,8 @@ def resize(images, target_shape=(299, 299, 3)):
         images = tf.image.grayscale_to_rgb(images)
     resized_images = []
     for img in images:
+        if isinstance(img, tf.Tensor):
+            img = img.numpy()
         resized_images.append(skimage.transform.resize(img, target_shape, 0))
     return tf.convert_to_tensor(resized_images, dtype=tf.float32)
 
