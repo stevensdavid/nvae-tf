@@ -65,15 +65,14 @@ def evaluate_model(
     ):
         precision, recall = 0, 0
         overall_ppl = 0
-        prev_attempts = 0 #before OOM crashing
+        initial_attempts = 0 #before OOM crashing
         if not os.path.exists("res.txt"):
             open("res.txt", "w").close()
         with open("res.txt", "r+") as resfile:
             lines = resfile.readlines()
             if lines != []:
                 _,_,_,attempts,_ = lines
-                prev_attempts = int(attempts) + 1 # even though it didn't finish, it'll be counted as an attempt
-                
+                initial_attempts = int(attempts) + 1 # even though it didn't finish, it'll be counted as an attempt
 
         for attempt in range(n_attempts):
             generated_images, last_s, z1, z2 = model.sample(
@@ -81,8 +80,8 @@ def evaluate_model(
             )
 
             for i, (test_batch, _) in enumerate(test_data):
-                print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + prev_attempts, n_attempts))
-                print("Stopping condition: %d out of %d" % (i*(prev_attempts + attempt), n_attempts*len(test_batch)))
+                print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
+                print("Stopping condition: %d out of %d" % (i*(initial_attempts + attempt), n_attempts*len(test_batch)))
 
                 # PR
                 pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
@@ -102,40 +101,25 @@ def evaluate_model(
                 with open("res.txt", "r") as resfile:
                     lines = resfile.readlines()
 
+                    previous_attempts = initial_attempts + attempt # zero-indexed
                     if lines == []:
-                        p, r, ppl_prev, i_s = 0,0,0,0
+                        p, r, ppl_prev = 0,0,0
                     else:
-                        p, r, ppl_prev, _, i_s = lines
+                        p, r, ppl_prev, _ = lines
+                        p = float(p) * previous_attempts
+                        r = float(r) * previous_attempts
+                        ppl_prev = float(ppl_prev) * previous_attempts
 
-                    p = float(p)
-                    r = float(r)
-                    ppl_prev = float(ppl_prev)
-                    i_s = int(i_s)
+                    attempts = previous_attempts + 1
+                    p = (p + batch_precision.item()) / attempts 
+                    r = (r + batch_recall.item()) / attempts
+                    ppl_new = (batch_ppl + ppl_prev ) / attempts
 
-                    p += batch_precision.item()
-                    r += batch_precision.item()
-                    ppl_new = batch_ppl + ppl_prev
-
-                    attempts = prev_attempts + attempt
-                    i_s += 1
-
-                    # Num of i_s before OOM will always roughly be the same. 
-                    # ~ performed iterations >= planned iterations
-                    if attempts*i_s >= (n_attempts-1) * (len(test_data)-1):
-                        p = p/(n_attempts * len(test_data))
-                        r = r/(n_attempts * len(test_data))
-                        precision = p
-                        recall = r
-
-                        ppl_new = ppl_new/(n_attempts * len(test_data))
-                        overall_ppl = ppl_new
                 with open("res.txt", "w") as resfile:
                     resfile.write(f"{p}\n")
                     resfile.write(f"{r}\n")
                     resfile.write(f"{ppl_new.numpy().item()}\n")
                     resfile.write(f"{attempts}\n")
-                    resfile.write(f"{i_s}\n")
-
 
         evaluation.sample_metrics.append(
             Metrics(
