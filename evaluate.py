@@ -9,8 +9,11 @@ import precision_recall as prec_rec
 import perceptual_path_length as ppl
 from tensorflow_probability import distributions
 import os
+from pympler import muppy, summary
 from tqdm import tqdm
+import importlib
 
+model_iv3, model_vgg = None, None
 
 def save_samples_to_tensorboard(epoch, model, image_logger):
     for temperature in [0.7, 0.8, 0.9, 1.0]:
@@ -54,52 +57,92 @@ def evaluate_model(
     # TODO: Handle entire dataset
     # test_samples, _ = next(test_data.as_numpy_iterator())
     # test_samples = tf.convert_to_tensor(test_samples)
+    print("In evaluate")
+    test_data = tf.random.shuffle(test_data)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
+    print(test_data.shape)
     for temperature in tqdm(
-        [0.6, 0.8, 1.0], desc="Temperature based tests (PPL/PR)", total=4
+        [1.0], desc="Temperature based tests (PPL/PR)", total=4
     ):
-        # TODO: Handle batches, perform 1000 attempts and average
-        precisions = []
-        recalls = []
-        ppls = []
-        for attempt in tqdm(range(n_attempts), desc="Sample attempt (PPL/PR)"):
+        precision, recall = 0, 0
+        perceptual_path_length = 0
+        prev_attempts = 0 #before OOM crashing
+
+        with open("res.txt", "r") as resfile:
+            lines = resfile.readlines()
+            if lines != []:
+                _,_,_,attempts,_ = lines
+                prev_attempts = attempts + 1 # even though it didn't finish, it'll be counted as an attempt
+                
+
+        for attempt in range(n_attempts):
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
-            precision, recall = 0, 0
-            for test_batch, _ in test_data:
-                for microbatch in tf.split(test_batch, 2):
-                    pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(microbatch)[0])
-                    # PR
-                    batch_precision, batch_recall = precision_recall(
-                        pr_images, microbatch
-                    )
-                    precision += batch_precision.item()
-                    recall += batch_recall.item()
-            # PPL
-            slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
-            images1, images2 = (
-                model.sample_with_z(slerp, last_s),
-                model.sample_with_z(slerp_perturbed, last_s),
-            )
-            ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
-            ppls.append(ppl)
-            precisions.append(precision / len(test_data))
-            recalls.append(recall / len(test_data))
-        fid = evaluate_fid(
-            model,
-            test_data,
-            "mnist",
-            batch_size=batch_size,
-            temperature=temperature,
-        )
+
+            for i,test_batch in enumerate(test_data):
+                print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + prev_attempts, n_attempts))
+                print("Stopping condition: %d out of %d" % (i*(prev_attempts + attempt), n_attempts*len(test_batch)))
+
+                # PR
+                pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
+                batch_precision, batch_recall = precision_recall(
+                    pr_images, test_batch
+                )
+
+                # PPL
+                slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+                images1, images2 = (
+                    model.sample_with_z(slerp, last_s),
+                    model.sample_with_z(slerp_perturbed, last_s),
+                )
+                ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+
+                # Save progress
+                with open("res.txt", "wr") as resfile:
+                    lines = resfile.readlines()
+
+                    if lines == []:
+                        p, r, ppl_prev, i_s = 0,0,0,0,0
+                    else:
+                        p, r, ppl_prev, _, i_s = lines
+
+                    p = float(p)
+                    r = float(r)
+                    ppl_prev = float(ppl_prev)
+
+                    p += batch_precision.item()
+                    r += batch_precision.item()
+                    ppl_new = ppl + ppl_prev
+
+                    attempts = prev_attempts + attempt
+                    i_s += 1
+
+                    # Num of i_s before OOM will always roughly be the same. 
+                    # ~ performed iterations >= planned iterations
+                    if attempts*i_s >= (n_attempts-1) * (len(test_data)-1):
+                        p = p/(n_attempts * len(test_data))
+                        r = r/(n_attempts * len(test_data))
+                        precision = p
+                        recall = r
+
+                        ppl_new = ppl_new/(n_attempts * len(test_data))
+                        perceptual_path_length = ppl_new
+                    
+                    resfile.write(p)
+                    resfile.write(r)
+                    resfile.write(ppl_new)
+                    resfile.write(attempts)
+                    resfile.write(i_s)
+
+
         evaluation.sample_metrics.append(
             Metrics(
                 temperature=temperature,
-                fid=fid,
-                ppl=Metric.from_list(ppls),
-                precision=Metric.from_list(precisions),
-                recall=Metric.from_list(recalls),
+                #fid=fid,
+                ppl=perceptual_path_length,
+                precision=precision,
+                recall=recall
             )
         )
     # Negative log-likelihood
@@ -196,21 +239,52 @@ def latent_activations(images1, images2, model_name):
 
     if model_name == "IV3":
         # TODO: Use
-        model = tf.keras.applications.InceptionV3(
-            include_top=False,
-            weights="imagenet",
-            pooling="avg",
-            input_shape=(299, 299, 3),
-        )
+        if model_iv3 == None:
+            model = tf.keras.applications.InceptionV3(
+                include_top=False,
+                weights="imagenet",
+                pooling="avg",
+                input_shape=(299, 299, 3),
+            )
+        else:
+            model = model_iv3
+
         act1 = tf.convert_to_tensor(model.predict(images1,), dtype=tf.float32)
         act2 = tf.convert_to_tensor(model.predict(images2), dtype=tf.float32)
     elif model_name == "VGG":
-        model = tf.keras.applications.VGG16(include_top=False, pooling="avg")
+        if model_vgg == None:
+            model = tf.keras.applications.VGG16(include_top=False, pooling="avg")
+        else:
+            model = model_vgg
+
+        print("------------ FIRST ------------")
+        all_objects = muppy.get_objects()
+        sum1 = summary.summarize(all_objects) 
+        summary.print_(sum1)
+        
         act1 = model(images1)
-        act2 = model(images2)
+        act2 = model(images2) # OOM
 
-    # latent representation
+    """
+    print("------------ SECOND ------------")
+    all_objects = muppy.get_objects()
+    sum1 = summary.summarize(all_objects)
+    summary.print_(sum1)
+    """
 
+    """
+    print("------------ THIRD ------------")
+    all_objects = muppy.get_objects()
+    sum1 = summary.summarize(all_objects)
+    summary.print_(sum1)
+    """
+    
+    """
+    for d in all_objects:
+        if(isinstance(d, pd.DataFrame)):
+            print(d.columns.values)
+            print(len(d))
+    """
     return act1, act2
 
 

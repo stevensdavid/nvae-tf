@@ -1,7 +1,6 @@
 from common import SqueezeExcitation
 import tensorflow as tf
 from tensorflow.keras import activations, Sequential, layers
-from tensorflow_addons.layers import SpectralNormalization
 
 
 class Preprocess(tf.keras.Model):
@@ -17,9 +16,7 @@ class Preprocess(tf.keras.Model):
     ) -> None:
         super().__init__(**kwargs)
         self.pre_process = Sequential(
-            SpectralNormalization(
-                layers.Conv2D(n_encoder_channels, (3, 3), padding="same")
-            )
+            layers.Conv2D(n_encoder_channels, (3, 3), padding="same")
         )
         for block in range(n_blocks):
             for cell in range(n_cells - 1):
@@ -43,23 +40,18 @@ class SkipScaler(tf.keras.Model):
     def __init__(self, n_channels, **kwargs):
         super().__init__(**kwargs)
         # Each convolution handles a quarter of the channels
-        self.conv1 = SpectralNormalization(
-            layers.Conv2D(n_channels // 4, (1, 1), strides=(2, 2), padding="same")
+        self.conv1 = layers.Conv2D(
+            n_channels // 4, (1, 1), strides=(2, 2), padding="same"
         )
-        self.conv2 = SpectralNormalization(
-            layers.Conv2D(n_channels // 4, (1, 1), strides=(2, 2), padding="same")
+        self.conv2 = layers.Conv2D(
+            n_channels // 4, (1, 1), strides=(2, 2), padding="same"
         )
-        self.conv3 = SpectralNormalization(
-            layers.Conv2D(n_channels // 4, (1, 1), strides=(2, 2), padding="same")
+        self.conv3 = layers.Conv2D(
+            n_channels // 4, (1, 1), strides=(2, 2), padding="same"
         )
         # This convolotuion handles the remaining channels
-        self.conv4 = SpectralNormalization(
-            layers.Conv2D(
-                n_channels - 3 * (n_channels // 4),
-                (1, 1),
-                strides=(2, 2),
-                padding="same",
-            )
+        self.conv4 = layers.Conv2D(
+            n_channels - 3 * (n_channels // 4), (1, 1), strides=(2, 2), padding="same",
         )
 
     def call(self, x):
@@ -86,16 +78,13 @@ class BNSwishConv(tf.keras.Model):
         for i in range(n_nodes):
             self.nodes.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))
             self.nodes.add(layers.Activation(activations.swish))
-            #
             self.nodes.add(
-                SpectralNormalization(
-                    layers.Conv2D(
-                        n_channels,
-                        (3, 3),
-                        # Only apply rescaling on first node
-                        stride if i == 0 else (1, 1),
-                        padding="same",
-                    )
+                layers.Conv2D(
+                    n_channels,
+                    (3, 3),
+                    # Only apply rescaling on first node
+                    stride if i == 0 else (1, 1),
+                    padding="same",
                 )
             )
         self.se = SqueezeExcitation()

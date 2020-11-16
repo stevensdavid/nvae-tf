@@ -60,6 +60,7 @@ def test(args, model, test_data):
 
     metrics_logdir = os.path.join(args.tensorboard_log_dir, "metrics")
     metrics_logger = tf.summary.create_file_writer(metrics_logdir)
+    print("Calling evaluate...")
     evaluation = evaluate_model(
         epoch=args.resume_from,
         model=model,

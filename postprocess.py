@@ -2,7 +2,6 @@ from common import RescaleType, Rescaler, SqueezeExcitation
 from tensorflow.keras import activations
 from tensorflow.keras import layers, Sequential
 import tensorflow as tf
-from tensorflow_addons.layers import SpectralNormalization
 
 
 class Postprocess(tf.keras.Model):
@@ -25,9 +24,7 @@ class Postprocess(tf.keras.Model):
                     )
                 )
         self.sequence.add(layers.Activation(activations.elu))
-        self.sequence.add(
-            SpectralNormalization(layers.Conv2D(1, kernel_size=(3, 3), padding="same"))
-        )
+        self.sequence.add(layers.Conv2D(1, kernel_size=(3, 3), padding="same"))
         self.mult = mult
 
     def call(self, inputs):
@@ -75,10 +72,8 @@ class PostprocessNode(tf.keras.Model):
             ConvBNSwish(hidden_dim, kernel_size=(5, 5), stride=(1, 1))
         )  # , groups=int(hidden_dim)))
         self.sequence.add(
-            SpectralNormalization(
-                layers.Conv2D(
-                    n_channels, kernel_size=(1, 1), strides=(1, 1), use_bias=False
-                )
+            layers.Conv2D(
+                n_channels, kernel_size=(1, 1), strides=(1, 1), use_bias=False
             )
         )
         self.sequence.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))
@@ -93,15 +88,13 @@ class ConvBNSwish(tf.keras.Model):
         super().__init__(**kwargs)
         self.sequence = Sequential()
         self.sequence.add(
-            SpectralNormalization(
-                layers.Conv2D(
-                    n_channels,
-                    kernel_size=kernel_size,
-                    strides=stride,
-                    groups=groups,
-                    use_bias=False,
-                    padding="same",
-                )
+            layers.Conv2D(
+                n_channels,
+                kernel_size=kernel_size,
+                strides=stride,
+                groups=groups,
+                use_bias=False,
+                padding="same",
             )
         )
         self.sequence.add(layers.BatchNormalization(momentum=0.05, epsilon=1e-5))

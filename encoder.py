@@ -3,13 +3,12 @@ from typing import List
 from tensorflow.keras import layers, Sequential, activations
 from functools import partial
 import tensorflow as tf
-from tensorflow_addons.layers import SpectralNormalization
 
 
 class EncoderDecoderCombiner(tf.keras.Model):
     def __init__(self, n_channels, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.decoder_conv = SpectralNormalization(layers.Conv2D(n_channels, (1, 1)))
+        self.decoder_conv = layers.Conv2D(n_channels, (1, 1))
 
     def call(self, encoder_x, decoder_x):
         x = self.decoder_conv(decoder_x)
@@ -58,9 +57,7 @@ class Encoder(tf.keras.Model):
         self.final_enc = Sequential(
             [
                 layers.ELU(),
-                SpectralNormalization(
-                    layers.Conv2D(n_encoder_channels * mult, (1, 1), padding="same")
-                ),
+                layers.Conv2D(n_encoder_channels * mult, (1, 1), padding="same"),
                 layers.ELU(),
             ]
         )
@@ -88,14 +85,11 @@ class EncodingResidualCell(tf.keras.Model):
 
     def __init__(self, output_channels, **kwargs):
         super().__init__(**kwargs)
+
         self.batch_norm1 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
-        self.conv1 = SpectralNormalization(
-            layers.Conv2D(output_channels, (3, 3), padding="same")
-        )
+        self.conv1 = layers.Conv2D(output_channels, (3, 3), padding="same")
         self.batch_norm2 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
-        self.conv2 = SpectralNormalization(
-            layers.Conv2D(output_channels, (3, 3), padding="same")
-        )
+        self.conv2 = layers.Conv2D(output_channels, (3, 3), padding="same")
         self.se = SqueezeExcitation()
 
     def call(self, inputs):
