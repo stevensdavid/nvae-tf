@@ -233,38 +233,33 @@ def perceptual_path_length(images1, images2):
 # For comparing generated and real samples via Inception v3 latent representation.
 # Returns latent activations from 2 sets of image batches.
 def latent_activations(images1, images2, model_name):
+    global model_iv3, model_vgg
     if not (images1.shape[1:] == (299, 299, 3) and images2.shape[1:] == (299, 299, 3)):
         images1, images2 = resize(images1), resize(images2)
 
     act1, act2 = 0, 0
-
     if model_name == "IV3":
         # TODO: Use
-        if model_iv3 == None:
-            model = tf.keras.applications.InceptionV3(
+        if model_iv3 is None:
+            model_iv3 = tf.keras.applications.InceptionV3(
                 include_top=False,
                 weights="imagenet",
                 pooling="avg",
                 input_shape=(299, 299, 3),
             )
-        else:
-            model = model_iv3
-
-        act1 = tf.convert_to_tensor(model.predict(images1,), dtype=tf.float32)
-        act2 = tf.convert_to_tensor(model.predict(images2), dtype=tf.float32)
+        act1 = tf.convert_to_tensor(model_iv3.predict(images1,), dtype=tf.float32)
+        act2 = tf.convert_to_tensor(model_iv3.predict(images2), dtype=tf.float32)
     elif model_name == "VGG":
-        if model_vgg == None:
-            model = tf.keras.applications.VGG16(include_top=False, pooling="avg")
-        else:
-            model = model_vgg
+        if model_vgg is None:
+            model_vgg = tf.keras.applications.VGG16(include_top=False, pooling="avg")
 
         # print("------------ FIRST ------------")
         # all_objects = muppy.get_objects()
         # sum1 = summary.summarize(all_objects) 
         # summary.print_(sum1)
         
-        act1 = model(images1)
-        act2 = model(images2) # OOM
+        act1 = model_vgg(images1)
+        act2 = model_vgg(images2) # OOM
 
     """
     print("------------ SECOND ------------")
