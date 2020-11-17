@@ -67,13 +67,7 @@ def evaluate_model(
         precision, recall = 0, 0
         overall_ppl = 0
         initial_attempts = 0 #before OOM crashing
-        if not os.path.exists("res.txt"):
-            open("res.txt", "w").close()
-        with open("res.txt", "r+") as resfile:
-            lines = resfile.readlines()
-            if lines != []:
-                _,_,_,iterations = lines
-                initial_attempts = int(iterations) + 1 # even though it didn't finish, it'll be counted as an attempt
+        
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
         for attempt in range(0, n_attempts):
             generated_images, last_s, z1, z2 = model.sample(
