@@ -64,7 +64,7 @@ def evaluate_model(
         
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
         for attempt in range(0, n_attempts):
-            generated_images, last_s, z1, z2 = model.sample(
+            generated_images, last_s, z1, z2, _ = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
 
