@@ -5,6 +5,7 @@ from util import softclamp5
 import tensorflow as tf
 
 from tensorflow.keras import layers, activations, Sequential
+from tensorflow_addons.layers import SpectralNormalization
 from dataclasses import dataclass
 
 
@@ -36,8 +37,12 @@ class Sampler(tf.keras.Model):
             n_groups = self.n_groups_per_scale[scale]
             for group in range(n_groups):
                 self.enc_sampler.append(
-                    layers.Conv2D(
-                        2 * self.n_latent_per_group, kernel_size=(3, 3), padding="same",
+                    SpectralNormalization(
+                        layers.Conv2D(
+                            2 * self.n_latent_per_group,
+                            kernel_size=(3, 3),
+                            padding="same",
+                        )
                     )
                 )
                 if scale == 0 and group == 0:
@@ -47,7 +52,11 @@ class Sampler(tf.keras.Model):
                     sampler = Sequential()
                     sampler.add(layers.ELU())
                     sampler.add(
-                        layers.Conv2D(2 * self.n_latent_per_group, kernel_size=(1, 1),)
+                        SpectralNormalization(
+                            layers.Conv2D(
+                                2 * self.n_latent_per_group, kernel_size=(1, 1),
+                            )
+                        )
                     )
                     self.dec_sampler.append(sampler)
 
@@ -140,13 +149,17 @@ class Rescaler(tf.keras.Model):
         self.mode = rescale_type
         self.factor = scale_factor
         if rescale_type == RescaleType.UP:
-            self.conv = layers.Conv2D(
-                n_channels, (3, 3), strides=(1, 1), padding="same"
+            self.conv = SpectralNormalization(
+                layers.Conv2D(n_channels, (3, 3), strides=(1, 1), padding="same")
             )
-
         elif rescale_type == RescaleType.DOWN:
-            self.conv = layers.Conv2D(
-                n_channels, (3, 3), strides=(self.factor, self.factor), padding="same",
+            self.conv = SpectralNormalization(
+                layers.Conv2D(
+                    n_channels,
+                    (3, 3),
+                    strides=(self.factor, self.factor),
+                    padding="same",
+                )
             )
 
     def call(self, input):

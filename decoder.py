@@ -2,6 +2,7 @@ from typing import List
 from common import RescaleType, SqueezeExcitation, Rescaler, Sampler
 import tensorflow as tf
 from tensorflow.keras import layers, activations, Sequential
+from tensorflow_addons.layers import SpectralNormalization
 from util import calculate_log_p
 
 
@@ -106,7 +107,9 @@ class Decoder(tf.keras.Model):
 class DecoderSampleCombiner(tf.keras.Model):
     def __init__(self, output_channels, **kwargs):
         super().__init__(**kwargs)
-        self.conv = layers.Conv2D(output_channels, (1, 1), strides=(1, 1), padding="same")
+        self.conv = SpectralNormalization(
+            layers.Conv2D(output_channels, (1, 1), strides=(1, 1), padding="same")
+        )
 
     def call(self, x, z):
         output = tf.concat((x, z), axis=3)
@@ -119,13 +122,16 @@ class GenerativeResidualCell(tf.keras.Model):
 
     def __init__(self, output_channels, expansion_ratio=6, **kwargs):
         super().__init__(**kwargs)
-
         self.batch_norm1 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
-        self.conv1 = layers.Conv2D(expansion_ratio * output_channels, (1, 1), padding="same")
+        self.conv1 = SpectralNormalization(
+            layers.Conv2D(expansion_ratio * output_channels, (1, 1), padding="same")
+        )
         self.batch_norm2 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
         self.depth_conv = layers.DepthwiseConv2D((5, 5), padding="same")
         self.batch_norm3 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
-        self.conv2 = layers.Conv2D(output_channels, (1, 1), padding="same")
+        self.conv2 = SpectralNormalization(
+            layers.Conv2D(output_channels, (1, 1), padding="same")
+        )
         self.batch_norm4 = layers.BatchNormalization(momentum=0.05, epsilon=1e-5)
         self.se = SqueezeExcitation()
 
