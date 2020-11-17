@@ -64,12 +64,14 @@ def evaluate_model(
         
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
         for attempt in range(0, n_attempts):
-            generated_images, last_s, z1, z2, _ = model.sample(
-                temperature=temperature, n_samples=batch_size
-            )
+            # generated_images, last_s, z1, z2, _ = model.sample(
+            #     temperature=temperature, n_samples=batch_size
+            # )
 
-            for i, test_batch in enumerate(rescaled_test_data):
-                print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
+            for i, test_batch in tqdm(
+                enumerate(rescaled_test_data), desc=f"Attempt {attempt} Batch:", total=len(rescaled_test_data)
+            ):
+                # print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
 
                 # PR
                 
