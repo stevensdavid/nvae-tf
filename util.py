@@ -29,11 +29,18 @@ def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
 
 
 def save_images_to_dir(images, dir):
-    if images.dtype.is_floating:
-        images = tf.cast(images * 255, tf.uint8)
     for image in images:
-        encoded = tf.io.encode_png(image)
-        tf.io.write_file(os.path.join(dir, f"{uuid.uuid4()}.png"), encoded)
+        save_image_to_dir(image, dir)
+
+
+def save_image_to_dir(image, dir, image_name=None):
+    os.makedirs(dir, exist_ok=True)
+    if image.dtype.is_floating:
+        image = tf.cast(image * 255, tf.uint8)
+    encoded = tf.io.encode_png(image)
+    if image_name is None:
+        image_name = uuid.uuid4()
+    tf.io.write_file(os.path.join(dir, f"{image_name}.png"), encoded)
 
 
 def calculate_log_p(z, mu, sigma):

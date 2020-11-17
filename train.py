@@ -1,6 +1,6 @@
 from argparse import ArgumentError, ArgumentParser
 from random import choice
-from util import sample_to_dir
+from util import sample_to_dir, save_image_to_dir
 from evaluate import save_reconstructions_to_tensorboard
 import os
 import tensorflow as tf
@@ -80,6 +80,16 @@ def sample(args, model):
         sample_to_dir(model, args.batch_size, args.n_samples, t, output_dir)
 
 
+def interpolate(args, model):
+    for _ in range(args.n_interpolations):
+        interpolation = model.interpolate(n_steps=args.interpolation_steps)
+        n, h, w, c = tf.shape(interpolation)
+        interpolation = tf.transpose(interpolation, perm=[0,2,1,3])
+        interpolation = tf.reshape(interpolation, [n*w, h, c])
+        interpolation = tf.transpose(interpolation, [1,0,2])
+        save_image_to_dir(interpolation, args.interpolation_dir)
+
+
 def main(args):
     print(f"Args: {args}")
     if args.cpu:
@@ -140,6 +150,8 @@ def main(args):
         test(args, model, test_data)
     elif args.mode == "sample":
         sample(args, model)
+    elif args.mode == "interpolate":
+        interpolate(args, model)
 
 
 def parse_args():
@@ -148,7 +160,7 @@ def parse_args():
         "--epochs", type=int, default=400, help="Number of epochs to train"
     )
     parser.add_argument("--batch_size", default=144, type=int)
-    parser.add_argument("--mode", type=str, choices=["train", "test", "sample"])
+    parser.add_argument("--mode", type=str, choices=["train", "test", "sample", "interpolate"])
     # Hyperparameters
     parser.add_argument(
         "--n_encoder_channels",
@@ -232,6 +244,12 @@ def parse_args():
         default=10,
         help="Number of samples to generate in sample mode",
     )
+    parser.add_argument(
+        "--n_interpolations", type=int, default=10, help="Number of interpolations to perform."
+    )
+    parser.add_argument(
+        "--interpolation_steps", type=int, default=10, help="Number of steps to interpolate."
+    )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
         "--model_save_dir",
@@ -244,6 +262,12 @@ def parse_args():
         type=str,
         default="results",
         help="Directory to save sampled images in. Only applicable in sample mode.",
+    )
+    parser.add_argument(
+        "--interpolation_dir",
+        type=str,
+        default="interp",
+        help="Directory to save interpolated images in. Only applicable in interpolation mode."
     )
     parser.add_argument(
         "--resume_from", type=int, default=0, help="Epoch to resume training from"
