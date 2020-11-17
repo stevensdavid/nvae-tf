@@ -67,7 +67,7 @@ def test(args, model, test_data):
         test_data=test_data,
         metrics_logger=metrics_logger,
         batch_size=args.batch_size,
-        n_attempts=10,
+        n_attempts=1,
     )
     print(f"Negative log likelihood: {evaluation.nll}")
     print(evaluation)
@@ -137,7 +137,7 @@ def main(args):
     if args.mode == "train":
         train(args, model, train_data, test_data)
     elif args.mode == "test":
-        test(args, model, test_data)
+        test(args, model, test_data.take(2))
     elif args.mode == "sample":
         sample(args, model)
 

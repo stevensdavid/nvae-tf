@@ -100,12 +100,13 @@ def evaluate_model(
                 batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
                 """
                 batch_ppl = 0
-
+                
+                """
                 # Save progress
                 resfile = open("res.txt", "r")
                 lines = resfile.readlines()
                 # Num of iterations before stopping. 
-                tot_iterations = n_attempts*len(rescaled_test_data)
+                
                 if lines == []:
                     p, r, ppl_prev, prev_iterations = 0,0,0,0
                 else:
@@ -123,30 +124,47 @@ def evaluate_model(
                 ppl_new = 0
                 performed_iterations = prev_iterations + 1
                 resfile.close()
+                """
                 
-                print("Stopping condition: %d out of %d" % (performed_iterations, tot_iterations))
-
-                if performed_iterations >= tot_iterations:
-                    ppl_new = ppl_new / performed_iterations
-                    p = p / performed_iterations
-                    r = r / performed_iterations
-
-                    precision, recall, overall_ppl = p, r, ppl_new
-
+                tot_iterations = n_attempts*len(rescaled_test_data)
+                curr_iterations = attempt*len(rescaled_test_data) + i
+                
+                print("Stopping condition: %d out of %d" % (curr_iterations, tot_iterations))
+                """
                 resfile = open("res.txt", "w")
                 resfile.write(f"{p}\n")
                 resfile.write(f"{r}\n")
                 resfile.write(f"{ppl_new}\n")
                 resfile.write(f"{performed_iterations}\n")
                 resfile.close()
+                """
+
+                #if performed_iterations >= tot_iterations:
+                """
+                ppl_new = ppl_new / performed_iterations
+                p = p / performed_iterations
+                r = r / performed_iterations
+                precision, recall, overall_ppl = p, r, ppl_new
+                """
+                    
+
+                record = open("record.txt", "a")
+                record.write(f"{batch_precision}\n")
+                record.write(f"{batch_recall}\n")
+                record.close()
+
+        record = open("record.txt", "r")
+        lines = record.readlines()
+        record_precision = [float(lines[i]) for i in range(len(lines)) if i%2 == 0]
+        record_recall = [float(lines[i]) for i in range(len(lines)) if i%2 == 1]
 
         evaluation.sample_metrics.append(
             Metrics(
                 temperature=temperature,
                 fid=None,
-                ppl=overall_ppl,
-                precision=precision,
-                recall=recall
+                ppl=None,
+                precision=Metric.from_list(record_precision),
+                recall=Metric.from_list(record_recall)
             )
         )
     # Negative log-likelihood
