@@ -80,7 +80,6 @@ def evaluate_model(
                 # PR
                 
                 pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
-                test_batch, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
                 batch_precision, batch_recall = precision_recall(
                     pr_images, test_batch
                 )
