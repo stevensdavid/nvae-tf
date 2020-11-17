@@ -59,7 +59,6 @@ def evaluate_model(
     # test_samples, _ = next(test_data.as_numpy_iterator())
     # test_samples = tf.convert_to_tensor(test_samples)
     print("In evaluate")
-    test_data = test_data.shuffle(batch_size)
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
     for temperature in tqdm(
         [1.0], desc="Temperature based tests (PPL/PR)", total=4
@@ -70,10 +69,6 @@ def evaluate_model(
         
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
         for attempt in range(0, n_attempts):
-            generated_images, last_s, z1, z2 = model.sample(
-                temperature=temperature, n_samples=batch_size
-            )
-
             for i, test_batch in enumerate(rescaled_test_data):
                 print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
 
