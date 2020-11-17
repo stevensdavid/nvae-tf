@@ -131,7 +131,7 @@ def main(args):
     adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
     model.compile(optimizer=adamax, run_eagerly=True)
     if args.resume_from > 0:
-        model.load_weights(checkpoint_path(args.model_save_dir, args.resume_from))
+        model.load_weights(checkpoint_path(args.model_save_dir, args.resume_from)).expect_partial()
         model.steps = args.resume_from * args.batch_size
 
     if args.mode == "train":

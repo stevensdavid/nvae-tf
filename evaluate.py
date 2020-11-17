@@ -115,7 +115,7 @@ def evaluate_model(
                     ppl_prev = float(ppl_prev)
                     prev_iterations = int(prev_iterations)
 
-                print("PR %d %d  PPL %d" % (batch_precision, batch_recall, batch_ppl))
+                print("PR %f %f  PPL %f" % (batch_precision, batch_recall, batch_ppl))
 
                 p = (p + batch_precision)
                 r = (r + batch_recall)
