@@ -179,9 +179,6 @@ def knn_precision_recall_features(ref_features, eval_features, nhood_sizes=[3],
     eval_manifold = ManifoldEstimator(distance_block, eval_features, row_batch_size, col_batch_size, nhood_sizes)
 
     # Evaluate precision and recall using k-nearest neighbors.
-    print('Evaluating k-NN precision and recall with %i samples...' % num_images)
-    start = time()
-
     # Precision: How many points from eval_features are in ref_features manifold.
     precision = ref_manifold.evaluate(eval_features)
     state['precision'] = precision.mean(axis=0)
@@ -189,8 +186,6 @@ def knn_precision_recall_features(ref_features, eval_features, nhood_sizes=[3],
     # Recall: How many points from ref_features are in eval_features manifold.
     recall = eval_manifold.evaluate(ref_features)
     state['recall'] = recall.mean(axis=0)
-
-    print('Evaluated k-NN precision and recall in: %gs' % (time() - start))
 
     return state
 

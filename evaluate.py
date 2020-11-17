@@ -51,55 +51,51 @@ def evaluate_model(
     epoch, model, test_data, metrics_logger, batch_size, n_attempts=10
 ) -> ModelEvaluation:
     test_data = test_data.shuffle(batch_size)
-    rescaled_test_data = tf.data.Dataset.from_tensor_slices(
-        [resize(x) for x, _ in tqdm(test_data, desc="Rescaling test data", total=len(test_data))]
-    )
     evaluation = ModelEvaluation(nll=None, sample_metrics=[])
+    ppl_attempts = 1000
     for temperature in tqdm(
         [1.0], desc="Temperature based tests (PPL/PR)", total=4
     ):
         ppls = []
         precisions = []
         recalls = []
-        for attempt in trange(n_attempts, desc="PR/PPL Attempts"):
-            generated_images, last_s, z1, z2 = model.sample(
-                temperature=temperature, n_samples=batch_size
-            )
-            batch_ppls = []
+        for attempt in trange(n_attempts, desc="PR Attempts"):
             batch_precisions = []
             batch_recalls = []
-            for test_batch in tqdm(rescaled_test_data, desc="Batch", total=len(rescaled_test_data)):
+            for test_batch, _ in tqdm(test_data, desc="Batch", total=len(test_data)):
                 # PR
                 pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
                 batch_precision, batch_recall = precision_recall(
                     pr_images, test_batch
                 )
-
-                # PPL
-                slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
-                images1, images2 = (
-                    model.sample_with_z(slerp, last_s),
-                    model.sample_with_z(slerp_perturbed, last_s),
-                )
-                batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
                 batch_precisions.append(batch_precision)
                 batch_recalls.append(batch_recall)
-                batch_ppls.append(batch_ppl)
-            ppl = np.mean(batch_ppls)
+            
             precision = np.mean(batch_precisions)
             recall = np.mean(batch_recalls)
-            ppls.append(ppl)
             precisions.append(precision)
             recalls.append(recall)
-            tqdm.write(f"Attempt results: PPL {ppl:.4f} | Precision {precision:.4f} | Recall {recall:.4f}")
+        for attempt in trange(ppl_attempts, desc="PPL"):
+            generated_images, last_s, z1, z2 = model.sample(
+                temperature=temperature, n_samples=batch_size
+            )
+            # PPL
+            slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+            images1, images2 = (
+                model.sample_with_z(slerp, last_s),
+                model.sample_with_z(slerp_perturbed, last_s),
+            )
+            batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+            ppl = np.mean(batch_ppl)
+            ppls.append(ppl)
 
         evaluation.sample_metrics.append(
             Metrics(
                 temperature=temperature,
                 fid=None,
                 ppl=Metric.from_list(ppls),
-                precision=Metric.from_list(precisions),
-                recall=Metric.from_list(recalls)
+                precision=None,#Metric.from_list(precisions),
+                recall=None,#Metric.from_list(recalls)
             )
         )
     # Negative log-likelihood
