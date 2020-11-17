@@ -10,7 +10,7 @@ import precision_recall as prec_rec
 import perceptual_path_length as ppl
 from tensorflow_probability import distributions
 import os
-from pympler import muppy, summary
+#from pympler import muppy, summary
 from tqdm import tqdm
 import importlib
 
@@ -75,21 +75,22 @@ def evaluate_model(
                 _,_,_,iterations = lines
                 initial_attempts = int(iterations) + 1 # even though it didn't finish, it'll be counted as an attempt
         rescaled_test_data = test_data.map(lambda x, _: tf.py_function(resize, [x], Tout=tf.float32))
-        for attempt in range(initial_attempts, n_attempts):
+        for attempt in range(0, n_attempts):
             generated_images, last_s, z1, z2 = model.sample(
                 temperature=temperature, n_samples=batch_size
             )
 
             for i, test_batch in enumerate(rescaled_test_data):
                 print("BATCH %d out of %d | ATTEMPT %d out of %d" % (i, len(test_data), attempt + initial_attempts, n_attempts))
-                print("Stopping condition: %d out of %d" % (i*(initial_attempts + attempt), n_attempts*len(test_batch)))
 
                 # PR
+                
                 pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
+                test_batch, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
                 batch_precision, batch_recall = precision_recall(
                     pr_images, test_batch
                 )
-
+                """  
                 # PPL
                 slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
                 images1, images2 = (
@@ -97,35 +98,52 @@ def evaluate_model(
                     model.sample_with_z(slerp_perturbed, last_s),
                 )
                 batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
+                """
+                batch_ppl = 0
 
                 # Save progress
-                with open("res.txt", "r") as resfile:
-                    lines = resfile.readlines()
+                resfile = open("res.txt", "r")
+                lines = resfile.readlines()
+                # Num of iterations before stopping. 
+                tot_iterations = n_attempts*len(rescaled_test_data)
+                if lines == []:
+                    p, r, ppl_prev, prev_iterations = 0,0,0,0
+                else:
+                    p, r, ppl_prev, prev_iterations = lines
+                    p = float(p)
+                    r = float(r)
+                    ppl_prev = float(ppl_prev)
+                    prev_iterations = int(prev_iterations)
 
-                    previous_iterations = initial_attempts + attempt*len(rescaled_test_data) + i # zero-indexed
-                    if lines == []:
-                        p, r, ppl_prev = 0,0,0
-                    else:
-                        p, r, ppl_prev, _ = lines
-                        p = float(p) * previous_iterations
-                        r = float(r) * previous_iterations
-                        ppl_prev = float(ppl_prev) * previous_iterations
+                print("PR %d %d  PPL %d" % (batch_precision, batch_recall, batch_ppl))
 
-                    iterations = previous_iterations + 1
-                    p = (p + batch_precision.item()) / iterations 
-                    r = (r + batch_recall.item()) / iterations
-                    ppl_new = (batch_ppl + ppl_prev ) / iterations
+                p = (p + batch_precision)
+                r = (r + batch_recall)
+                ppl_new = (batch_ppl + ppl_prev)
+                ppl_new = 0
+                performed_iterations = prev_iterations + 1
+                resfile.close()
+                
+                print("Stopping condition: %d out of %d" % (performed_iterations, tot_iterations))
 
-                with open("res.txt", "w") as resfile:
-                    resfile.write(f"{p}\n")
-                    resfile.write(f"{r}\n")
-                    resfile.write(f"{ppl_new.numpy().item()}\n")
-                    resfile.write(f"{attempt}\n")
+                if performed_iterations >= tot_iterations:
+                    ppl_new = ppl_new / performed_iterations
+                    p = p / performed_iterations
+                    r = r / performed_iterations
+
+                    precision, recall, overall_ppl = p, r, ppl_new
+
+                resfile = open("res.txt", "w")
+                resfile.write(f"{p}\n")
+                resfile.write(f"{r}\n")
+                resfile.write(f"{ppl_new}\n")
+                resfile.write(f"{performed_iterations}\n")
+                resfile.close()
 
         evaluation.sample_metrics.append(
             Metrics(
                 temperature=temperature,
-                #fid=fid,
+                fid=None,
                 ppl=overall_ppl,
                 precision=precision,
                 recall=recall
@@ -199,7 +217,7 @@ def precision_recall(images1, images2):
     # act2 = tf.reshape(act1, (tf.shape(act2)[0], -1))
     pr = prec_rec.knn_precision_recall_features(act1, act2)
     # tf.compat.v1.enable_eager_execution()
-    return pr["precision"], pr["recall"]
+    return pr["precision"][0], pr["recall"][0]
 
 
 # Calculates slerp from sampled latents. To continue PPL, generate images from the result of this function
