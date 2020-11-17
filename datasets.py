@@ -13,6 +13,8 @@ def load_mnist(batch_size, binary=True):
         image = tf.cast(image, dtype=tf.float32)
         if binary:
             image = tfp.distributions.Bernoulli(probs=image, dtype=tf.float32).sample()
+        else:
+            image /= 255
         return image, label
 
     return train_ds.map(transform), test_ds.map(transform)
