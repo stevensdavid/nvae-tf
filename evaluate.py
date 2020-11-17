@@ -88,8 +88,8 @@ def evaluate_model(
             #     model.sample_with_z(slerp_perturbed, last_s),
             # )
             images1, images2 = (
-                model.sample(n_samples=batch_size, temperature=temperature, z=slerp),
-                model.sample(n_samples=batch_size, temperature=temperature, z=slerp_perturbed),
+                model.sample(n_samples=batch_size, temperature=temperature, z=slerp)[0],
+                model.sample(n_samples=batch_size, temperature=temperature, z=slerp_perturbed)[0],
             )
             batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
             ppl = np.mean(batch_ppl)
