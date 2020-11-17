@@ -140,17 +140,20 @@ class NVAE(tf.keras.Model):
             "sr_loss": sr_loss,
         }
 
+    def sample_z0(self, n_samples, temperature=1.0):
+        z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
+        mu = softclamp5(tf.zeros(z0_shape))
+        sigma = tf.math.exp(softclamp5(tf.zeros(z0_shape))) + 1e-2
+        if temperature != 1.0:
+            sigma *= temperature
+        z = self.decoder.sampler.sample(mu, sigma)
+        return z
+
     def sample(self, n_samples=16, temperature=1.0, greyscale=True, z=None):
         s = tf.expand_dims(self.decoder.h, 0)
         s = tf.tile(s, [n_samples, 1, 1, 1])
         if z is None:
-            z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
-            mu = softclamp5(tf.zeros(z0_shape))
-            sigma = tf.math.exp(softclamp5(tf.zeros(z0_shape))) + 1e-2
-            if temperature != 1.0:
-                sigma *= temperature
-            z = self.decoder.sampler.sample(mu, sigma)
-
+            z = self.sample_z0(n_samples, temperature)
         z0 = z
 
         decoder_index = 0

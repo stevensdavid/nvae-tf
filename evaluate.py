@@ -76,14 +76,20 @@ def evaluate_model(
             precisions.append(precision)
             recalls.append(recall)
         for attempt in trange(ppl_attempts, desc="PPL"):
-            generated_images, last_s, z1, z2 = model.sample(
-                temperature=temperature, n_samples=batch_size
-            )
+            z1 = model.sample_z0(n_samples=batch_size, temperature=temperature)
+            z2 = model.sample_z0(n_samples=batch_size, temperature=temperature)
+            # generated_images, last_s, z1, z2 = model.sample(
+            #     temperature=temperature, n_samples=batch_size
+            # )
             # PPL
             slerp, slerp_perturbed = perceptual_path_length_init(z1, z2)
+            # images1, images2 = (
+            #     model.sample_with_z(slerp, last_s),
+            #     model.sample_with_z(slerp_perturbed, last_s),
+            # )
             images1, images2 = (
-                model.sample_with_z(slerp, last_s),
-                model.sample_with_z(slerp_perturbed, last_s),
+                model.sample(n_samples=batch_size, temperature=temperature, z=slerp),
+                model.sample(n_samples=batch_size, temperature=temperature, z=slerp_perturbed),
             )
             batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
             ppl = np.mean(batch_ppl)
