@@ -67,7 +67,7 @@ def test(args, model, test_data):
         test_data=test_data,
         metrics_logger=metrics_logger,
         batch_size=args.batch_size,
-        n_attempts=10,
+        n_attempts=1,
     )
     print(f"Negative log likelihood: {evaluation.nll}")
     print(evaluation)
@@ -141,13 +141,13 @@ def main(args):
     adamax = tf.keras.optimizers.Adamax(learning_rate=lr_schedule)
     model.compile(optimizer=adamax, run_eagerly=True)
     if args.resume_from > 0:
-        model.load_weights(checkpoint_path(args.model_save_dir, args.resume_from))
+        model.load_weights(checkpoint_path(args.model_save_dir, args.resume_from)).expect_partial()
         model.steps = args.resume_from * args.batch_size
 
     if args.mode == "train":
         train(args, model, train_data, test_data)
     elif args.mode == "test":
-        test(args, model, test_data)
+        test(args, model, test_data.take(2))
     elif args.mode == "sample":
         sample(args, model)
     elif args.mode == "interpolate":
