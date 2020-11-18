@@ -46,7 +46,7 @@ def save_reconstructions_to_tensorboard(
 
 
 def evaluate_model(
-    epoch, model, test_data, metrics_logger, batch_size, n_attempts=10
+    epoch, model, test_data, metrics_logger, batch_size, n_attempts=10, binary=False,
 ) -> ModelEvaluation:
     # PPL
     # slerp, slerp_perturbed = e.perceptual_path_length_init()
@@ -92,6 +92,7 @@ def evaluate_model(
             "mnist",
             batch_size=batch_size,
             temperature=temperature,
+            binary=binary,
         )
         evaluation.sample_metrics.append(
             Metrics(
@@ -139,7 +140,7 @@ def fid_score(images1, images2):
     return np.sum((mu1 - mu2) ** 2.0) + np.trace(sigma1 + sigma2 - 2.0 * (covmean.real))
 
 
-def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature):
+def evaluate_fid(model: NVAE, dataset, dataset_name, batch_size, temperature, binary=False):
     dataset_dir = os.path.join("images", dataset_name, "actual")
     output_dir = os.path.join("images", dataset_name, f"generated_t_{temperature}")
     os.makedirs(dataset_dir, exist_ok=True)

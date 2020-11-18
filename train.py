@@ -67,6 +67,7 @@ def test(args, model, test_data):
         metrics_logger=metrics_logger,
         batch_size=args.batch_size,
         n_attempts=10,
+        binary=args.binary_eval,
     )
     print(f"Negative log likelihood: {evaluation.nll}")
     print(evaluation)
@@ -96,7 +97,7 @@ def main(args):
     if args.dataset == "mnist":
         from datasets import load_mnist
 
-        train_data, test_data = load_mnist(batch_size=args.batch_size, binary=args.mode == "train")
+        train_data, test_data = load_mnist(batch_size=args.batch_size, binary=args.mode == "train" or args.binary_eval)
     else:
         raise ArgumentError("Unsupported dataset")
     if args.debug:
@@ -271,6 +272,7 @@ def parse_args():
         default=1,
         help="Number of epochs between each log write",
     )
+    parser.add_argument("--binary_eval", action="store_true", help="Evaluate on binary data")
     parser.add_argument(
         "--patience",
         type=int,
