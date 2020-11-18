@@ -3,7 +3,7 @@ import tensorflow_datasets as tfds
 import tensorflow_probability as tfp
 
 
-def load_mnist(batch_size):
+def load_mnist(batch_size, binary=True):
     train_ds, test_ds = tfds.load(
         "mnist", split=["train", "test"], batch_size=batch_size, as_supervised=True
     )
@@ -11,7 +11,10 @@ def load_mnist(batch_size):
     def transform(image, label):
         image = tf.image.resize_with_crop_or_pad(image, 32, 32)
         image = tf.cast(image, dtype=tf.float32)
-        image = tfp.distributions.Bernoulli(probs=image, dtype=tf.float32).sample()
+        if binary:
+            image = tfp.distributions.Bernoulli(probs=image, dtype=tf.float32).sample()
+        else:
+            image /= 255
         return image, label
 
     return train_ds.map(transform), test_ds.map(transform)

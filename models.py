@@ -140,7 +140,7 @@ class NVAE(tf.keras.Model):
             "sr_loss": sr_loss,
         }
 
-    def sample(self, n_samples=16, temperature=1.0, return_mean=True):
+    def sample(self, n_samples=16, temperature=1.0, greyscale=True):
         s = tf.expand_dims(self.decoder.h, 0)
         s = tf.tile(s, [n_samples, 1, 1, 1])
         z0_shape = tf.concat([[n_samples], self.decoder.z0_shape], axis=0)
@@ -174,8 +174,8 @@ class NVAE(tf.keras.Model):
         distribution = distributions.Bernoulli(
             logits=reconstruction, dtype=tf.float32, allow_nan_stats=False
         )
-        if return_mean:
-            images = distribution.mean()
+        if greyscale:
+            images = distribution.probs_parameter()
         else:
             images = distribution.sample()
         z1 = self.decoder.sampler.sample(mu, sigma)
