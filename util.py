@@ -19,11 +19,11 @@ def tile_images(images):
     return tf.reshape(images, [n * height, n * width, channels])
 
 
-def sample_to_dir(model, batch_size, sample_size, temperature, output_dir):
+def sample_to_dir(model, batch_size, sample_size, temperature, output_dir, binary=False):
     batches = max(sample_size // batch_size, 1)
     for image_batch in trange(batches, desc="Generating samples"):
         images, *_ = model.sample(
-            n_samples=batch_size, greyscale=True, temperature=temperature
+            n_samples=batch_size, greyscale=not binary, temperature=temperature
         )
         save_images_to_dir(images, output_dir)
 
