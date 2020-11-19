@@ -57,27 +57,10 @@ def evaluate_model(
         [1.0], desc="Temperature based tests (PPL/PR)", total=4
     ):
         ppls = []
-        precisions = []
-        recalls = []
-        for attempt in trange(n_attempts, desc="PR Attempts"):
-            batch_precisions = []
-            batch_recalls = []
-            for test_batch, _ in tqdm(test_data, desc="Batch", total=len(test_data)):
-                # PR
-                pr_images, *_ = model.sample(temperature=temperature, n_samples=tf.shape(test_batch)[0])
-                batch_precision, batch_recall = precision_recall(
-                    pr_images, test_batch
-                )
-                batch_precisions.append(batch_precision)
-                batch_recalls.append(batch_recall)
-            
-            precision = np.mean(batch_precisions)
-            recall = np.mean(batch_recalls)
-            precisions.append(precision)
-            recalls.append(recall)
+
         for attempt in trange(ppl_attempts, desc="PPL"):
-            z1 = model.sample_z0(n_samples=batch_size, temperature=temperature)
-            z2 = model.sample_z0(n_samples=batch_size, temperature=temperature)
+            z1 = tf.stack([model.sample_z0(n_samples=1, temperature=temperature)]*batch_size)
+            z2 = tf.stack([model.sample_z0(n_samples=1, temperature=temperature)]*batch_size)
             # generated_images, last_s, z1, z2 = model.sample(
             #     temperature=temperature, n_samples=batch_size
             # )
@@ -94,6 +77,7 @@ def evaluate_model(
             batch_ppl = tf.reduce_mean(perceptual_path_length(images1, images2))
             ppl = np.mean(batch_ppl)
             ppls.append(ppl)
+            print(ppls)
 
         evaluation.sample_metrics.append(
             Metrics(
