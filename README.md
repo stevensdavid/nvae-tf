@@ -1,2 +1,4 @@
-# nvae-tf
-A TensorFlow implementation of NVAE
+# NVAE-TF
+![](sample.png)
+
+A TensorFlow implementation of NVAE.
