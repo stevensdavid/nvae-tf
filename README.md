@@ -16,7 +16,7 @@ which contains the main NVAE class, and the four files `encoder.py`,
 `decoder.py`, `preprocess.py` and `postprocess.py` which contain 
 classes forming the four components of the NVAE architecture.
 
-Some functionality currently resigns in other branches. Specifically,
+Some functionality currently resides in other branches. Specifically,
 an implementation that uses spectral regularization instead of 
 spectral normalization is available on the branch `spectral_reg`, and 
 the other branches are related to various tweaks to the evaluation
